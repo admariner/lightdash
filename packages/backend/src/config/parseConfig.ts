@@ -3,52 +3,54 @@ import addFormats from "ajv-formats";
 import lightdashV1JsonSchema from "../jsonSchemas/lightdashConfig/v1.json";
 import {ParseError} from "../errors";
 
-enum ProjectType {
+export enum ProjectType {
     DBT = 'dbt',
     DBT_REMOTE_SERVER = 'dbt_remote_server'
 }
 
-interface ProjectConfig {
+interface DbtProjectConfigBase {
     type: ProjectType;
     name: string;
 }
 
-interface DbtLocalProjectConfig extends ProjectConfig {
+interface DbtLocalProjectConfig extends DbtProjectConfigBase {
     type: ProjectType.DBT;
     profiles_dir: string;
     project_dir: string;
     rpc_server_port: number;
 }
 
-interface DbtRemoteProjectConfig extends ProjectConfig {
+interface DbtRemoteProjectConfig extends DbtProjectConfigBase {
     type: ProjectType.DBT_REMOTE_SERVER;
     name: string;
     rpc_server_host: string;
     rpc_server_port: number;
 }
 
+export type DbtProjectConfig = DbtLocalProjectConfig | DbtRemoteProjectConfig;
+
 export type LightdashConfigIn = {
     version: '1.0';
-    projects: Array<ProjectConfig>;
+    projects: Array<DbtProjectConfigBase>;
 };
 
 export type LightdashConfig = {
     version: '1.0';
-    projects: Array<DbtLocalProjectConfig|DbtRemoteProjectConfig>;
+    projects: Array<DbtProjectConfig>;
 };
 
-const isDbtLocalProjectConfig = (config: ProjectConfig): config is DbtLocalProjectConfig => {
+const isDbtLocalProjectConfig = (config: DbtProjectConfigBase): config is DbtLocalProjectConfig => {
     return config.type === ProjectType.DBT;
 }
 
-const isDbtRemoteProjectConfig= (config: ProjectConfig): config is DbtRemoteProjectConfig => {
+const isDbtRemoteProjectConfig= (config: DbtProjectConfigBase): config is DbtRemoteProjectConfig => {
     return config.type === ProjectType.DBT_REMOTE_SERVER;
 }
 
 const dbtLocalProjectConfigRequiredFields: Array<keyof DbtLocalProjectConfig> = ['type', 'name', 'profiles_dir', 'project_dir', 'rpc_server_port'];
 const dbtRemoteProjectConfigRequiredFields: Array<keyof DbtRemoteProjectConfig> = ['type', 'name', 'rpc_server_host', 'rpc_server_port'];
 
-const mergeProjectWithEnvironment = <T extends ProjectConfig>(projectIndex: number, project: T, requiredField: Array<keyof T>,): T => {
+const mergeProjectWithEnvironment = <T extends DbtProjectConfig>(projectIndex: number, project: T, requiredField: Array<keyof T>,): T => {
     return requiredField.reduce((prev, key) => {
         const envKey = `LIGHTDASH_PROJECT_${projectIndex}_${key}`.toUpperCase();
         const value = process.env[envKey] || project[key];
