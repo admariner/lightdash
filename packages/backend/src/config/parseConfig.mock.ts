@@ -45,8 +45,10 @@ export const LOCAL_PROJECT_MISSING_PROJECT_DIR = {
 }
 
 export const LOCAL_PROJECT_MISSING_PROFILES_DIR = {
-    ...LOCAL_PROJECT,
-    profiles_dir: undefined,
+    type: 'dbt',
+    name: 'project',
+    profiles_dir: 'hello',
+    rpc_server_port: 8580,
 }
 
 export const REMOTE_PROJECT = {

@@ -62,8 +62,8 @@ test('Should throw ParseError for missing project dir', () => {
 });
 
 test('Should parse local config merged with environment variable', () => {
-    const expected = wrapProject(LOCAL_PROJECT);
-    const actual = wrapProject(LOCAL_PROJECT_MISSING_PROJECT_DIR);
+    const expected = wrapProject({...LOCAL_PROJECT_MISSING_PROFILES_DIR, project_dir: LOCAL_PROJECT.project_dir});
+    const actual = wrapProject(LOCAL_PROJECT_MISSING_PROFILES_DIR);
     process.env.LIGHTDASH_PROJECT_0_PROJECT_DIR = LOCAL_PROJECT.project_dir;
     expect(parseConfig(actual)).toEqual(expected)
 })
