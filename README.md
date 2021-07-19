@@ -45,8 +45,7 @@ Start learning Lightdash:
 
 * [Play with a UI demo](https://demo.lightdash.com) (*no setup*)
 * [Setup your own lightdash with demo data](https://docs.lightdash.com/get-started/setup-the-demo-project) (*run locally with docker*)
-* [Setup Lightdash with your existing local dbt project](https://docs.lightdash.com/get-started/setup-a-local-dbt-project) (*requires your own dbt project*)
-* [Setup Lightdash with your existing cloud dbt project](https://docs.lightdash.com/get-started/setup-a-dbt-cloud-project) (*requires your own dbt project on dbtCloud*)
+* [Setup Lightdash with your existing dbt project](https://docs.lightdash.com/get-started/setup-an-existing-dbt-project) (*requires your own dbt project*)
 
 ## Community Support
 Join our community if you need help, want to chat or have any other questions for us:
@@ -96,32 +95,7 @@ Open lightdash at `https://localhost:8080`
 
 ## Installation from source
 
-Lightdash requires node.js, yarn and dbt.
-
-**Install dependencies for Mac OS**
-```shell
-# Install node with homebrew
-brew install node
-
-# Install yarn with node package manager
-npm install -g yarn
-
-# Clone the Lightdash repo
-git clone https://github.com/lightdash/lightdash
-
-# Enter the repo directory
-cd lightdash
-
-# Install Lightdash dependencies and build
-yarn install
-yarn build
-
-# Run Lightdash
-export LIGHTDASH_CONFIG_FILE=${PWD}/lightdash.yml
-yarn start
-
-# Press ALLOW when asked to "accept incoming connections from python"
-```
+You can check the instructions in our [contribution guidelines](https://github.com/lightdash/lightdash/blob/main/.github/CONTRIBUTING.md#your-first-code-contribution)
 
 ## Docs
 
@@ -157,7 +131,6 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
     <td align="center"><a href="http://jeshua.co"><img src="https://avatars.githubusercontent.com/u/2297823?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Jeshua Maxey</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3Ajeshuamaxey" title="Bug reports">🐛</a></td>
     <td align="center"><a href="https://github.com/srjonemed"><img src="https://avatars.githubusercontent.com/u/34316602?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Sreejith Madhavan</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3Asrjonemed" title="Bug reports">🐛</a></td>
     <td align="center"><a href="https://github.com/skame"><img src="https://avatars.githubusercontent.com/u/1732972?v=4?s=100" width="100px;" alt=""/><br /><sub><b>skame</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3Askame" title="Bug reports">🐛</a> <a href="#design-skame" title="Design">🎨</a></td>
-    <td align="center"><a href="https://www.linkedin.com/in/sgoley"><img src="https://avatars.githubusercontent.com/u/10283176?v=4?s=100" width="100px;" alt=""/><br /><sub><b>sgoley</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=sgoley" title="Documentation">📖</a></td>
   </tr>
 </table>
 

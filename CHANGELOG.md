@@ -3,6 +3,8 @@
 Recent and upcoming changes to lightdash
 
 ## Unreleased
+### Added
+ - Add login and register pages 
 
 ## [0.4.0] - 2021-07-14
 ### Added
