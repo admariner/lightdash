@@ -8,6 +8,7 @@ import {
 } from '../database/entities/users';
 import database from '../database/database';
 import { AuthorizationError, ForbiddenError } from '../errors';
+import { trackUserCreated } from '../analytics';
 
 export const UserModel = {
     login: async (email: string, password: string): Promise<LightdashUser> => {
@@ -30,7 +31,8 @@ export const UserModel = {
         if (await hasUsers(database)) {
             throw new ForbiddenError('User already registered');
         }
-        await createInitialUser(...data);
+        const user = await createInitialUser(...data);
+        trackUserCreated(user);
     },
     findById: async (uuid: string): Promise<LightdashUser> => {
         const user = await getUserDetailsByUuid(database, uuid);

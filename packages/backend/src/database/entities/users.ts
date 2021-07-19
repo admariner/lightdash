@@ -8,7 +8,7 @@ import database from '../database';
 import { createPasswordLogin } from './passwordLogins';
 import { createOrganizationMembership } from './organizationMemberships';
 
-type DbUserDetails = {
+export type DbUserDetails = {
     user_uuid: string;
     first_name: string;
     last_name: string;
