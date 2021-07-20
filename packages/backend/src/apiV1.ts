@@ -13,6 +13,7 @@ import { buildQuery } from './queryBuilder';
 import { getHealthState } from './health';
 import { UserModel } from './models/User';
 import { AuthorizationError, ParameterError } from './errors';
+import { OrgModel } from './models/Org';
 
 export const apiV1Router = express.Router();
 
@@ -103,6 +104,45 @@ apiV1Router.get('/user', isAuthenticated, async (req, res) => {
         results: req.user,
     });
 });
+
+apiV1Router.post('/user', isAuthenticated, async (req, res, next) =>
+    UserModel.updateProfile(req.user!.userId, req.user!.email, req.body)
+        .then((user) => {
+            res.json({
+                status: 'ok',
+                results: user,
+            });
+        })
+        .catch(next),
+);
+
+apiV1Router.post('/user/password', isAuthenticated, async (req, res, next) =>
+    UserModel.updatePassword(req.user!.userId, req.user!.userUuid, req.body)
+        .then(() => {
+            req.logout();
+            req.session.save((err) => {
+                if (err) {
+                    next(err);
+                } else {
+                    res.json({
+                        status: 'ok',
+                    });
+                }
+            });
+        })
+        .catch(next),
+);
+
+apiV1Router.post('/org', isAuthenticated, async (req, res, next) =>
+    OrgModel.updateOrg(req.user!.organizationUuid, req.body)
+        .then((user) => {
+            res.json({
+                status: 'ok',
+                results: user,
+            });
+        })
+        .catch(next),
+);
 
 apiV1Router.get('/tables', isAuthenticated, async (req, res, next) => {
     getAllTables()

@@ -529,6 +529,17 @@ export type ApiRegisterResponse =
           results: undefined;
       };
 
+export interface SessionUser {
+    userId: number;
+    userUuid: string;
+    email: string | undefined;
+    firstName: string;
+    lastName: string;
+    organizationUuid: string | undefined;
+    organizationName: string | undefined;
+    isTrackingAnonymized: boolean;
+}
+
 export interface LightdashUser {
     userUuid: string;
     email: string | undefined;
@@ -547,6 +558,12 @@ export type CreateInitialUserArgs = {
     password: string;
     isMarketingOptedIn: boolean;
     isTrackingAnonymized: boolean;
+};
+
+export type UpdateUserArgs = {
+    firstName: string;
+    lastName: string;
+    email: string;
 };
 
 export type ApiUserResponse =
