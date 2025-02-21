@@ -1,5 +1,4 @@
-import { CompileError, MetricType } from '@lightdash/common';
-import assertUnreachable from '@lightdash/common/dist/utils/assertUnreachable';
+import { assertUnreachable, CompileError, MetricType } from '@lightdash/common';
 
 export function getDefaultMetricSql(sql: string, type: MetricType): string {
     switch (type) {
@@ -18,6 +17,7 @@ export function getDefaultMetricSql(sql: string, type: MetricType): string {
         case MetricType.NUMBER:
         case MetricType.STRING:
         case MetricType.DATE:
+        case MetricType.TIMESTAMP:
         case MetricType.BOOLEAN:
         case MetricType.PERCENTILE:
         case MetricType.MEDIAN:

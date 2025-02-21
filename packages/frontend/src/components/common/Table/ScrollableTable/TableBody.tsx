@@ -1,19 +1,28 @@
 import {
+    getConditionalFormattingColor,
     getConditionalFormattingConfig,
-    isFilterableItem,
+    getConditionalFormattingDescription,
+    getItemId,
     isNumericItem,
-    ResultRow,
+    type ResultRow,
 } from '@lightdash/common';
-import { flexRender, Row } from '@tanstack/react-table';
-import { useVirtual } from '@tanstack/react-virtual';
-import React, { FC } from 'react';
-import { readableColor } from '../../../../utils/colorUtils';
-import { getConditionalRuleLabel } from '../../Filters/configs';
-import BodyCell from '../BodyCell';
-import { Tr } from '../Table.styles';
-import { TableContext, useTableContext } from '../TableProvider';
+import type { ConditionalFormattingRowFields } from '@lightdash/common/src/types/conditionalFormatting';
+import { Button, Group } from '@mantine/core';
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
+import { flexRender, type Row } from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import React, { useMemo, type FC } from 'react';
+import { getColorFromRange, readableColor } from '../../../../utils/colorUtils';
+import { getConditionalRuleLabel } from '../../Filters/FilterInputs/utils';
+import MantineIcon from '../../MantineIcon';
+import { ROW_HEIGHT_PX, Tr } from '../Table.styles';
+import { type TableContext } from '../types';
+import { useTableContext } from '../useTableContext';
+import { countSubRows } from '../utils';
+import { SMALL_TEXT_LENGTH } from './../constants';
+import BodyCell from './BodyCell';
 
-const VirtualizedArea: FC<{ cellCount: number; padding: number }> = ({
+export const VirtualizedArea: FC<{ cellCount: number; padding: number }> = ({
     cellCount,
     padding,
 }) => {
@@ -36,25 +45,40 @@ interface TableRowProps {
     row: Row<ResultRow>;
 
     cellContextMenu?: TableContext['cellContextMenu'];
-    selectedCell?: TableContext['selectedCell'];
-    onSelectCell?: TableContext['onSelectCell'];
-    copyingCellId?: TableContext['copyingCellId'];
-    onCopyCell?: TableContext['onCopyCell'];
     conditionalFormattings: TableContext['conditionalFormattings'];
+    minMaxMap: TableContext['minMaxMap'];
     minimal?: boolean;
 }
 
 const TableRow: FC<TableRowProps> = ({
     row,
     index,
-    copyingCellId,
-    selectedCell,
     cellContextMenu,
     conditionalFormattings,
-    onCopyCell,
-    onSelectCell,
+    minMaxMap,
     minimal = false,
 }) => {
+    const rowFields = useMemo(
+        () =>
+            row
+                .getVisibleCells()
+                .reduce<ConditionalFormattingRowFields>((acc, cell) => {
+                    const meta = cell.column.columnDef.meta;
+                    if (meta?.item) {
+                        const cellValue = cell.getValue() as
+                            | ResultRow[0]
+                            | undefined;
+
+                        acc[getItemId(meta.item)] = {
+                            field: meta.item,
+                            value: cellValue?.value?.raw,
+                        };
+                    }
+                    return acc;
+                }, {}),
+        [row],
+    );
+
     return (
         <Tr $index={index}>
             {row.getVisibleCells().map((cell) => {
@@ -63,52 +87,124 @@ const TableRow: FC<TableRowProps> = ({
                 const cellValue = cell.getValue() as ResultRow[0] | undefined;
 
                 const conditionalFormattingConfig =
-                    getConditionalFormattingConfig(
+                    getConditionalFormattingConfig({
                         field,
-                        cellValue?.value.raw,
+                        value: cellValue?.value?.raw,
+                        minMaxMap,
                         conditionalFormattings,
-                    );
+                        rowFields,
+                    });
 
-                const tooltipContent =
-                    field &&
-                    isFilterableItem(field) &&
-                    conditionalFormattingConfig &&
-                    conditionalFormattingConfig?.rules.length > 0
-                        ? conditionalFormattingConfig.rules
-                              .map((r) => getConditionalRuleLabel(r, field))
-                              .map((l) => `${l.operator} ${l.value}`)
-                              .join(' and ')
+                const conditionalFormattingColor =
+                    getConditionalFormattingColor({
+                        field,
+                        value: cellValue?.value?.raw,
+                        minMaxMap,
+                        config: conditionalFormattingConfig,
+                        getColorFromRange,
+                    });
+
+                // Frozen/locked rows should have a white background, unless there is a conditional formatting color
+                let backgroundColor: string | undefined;
+                if (conditionalFormattingColor) {
+                    backgroundColor = conditionalFormattingColor;
+                } else if (meta?.frozen) {
+                    backgroundColor = 'white';
+                }
+
+                const tooltipContent = getConditionalFormattingDescription(
+                    field,
+                    conditionalFormattingConfig,
+                    rowFields,
+                    getConditionalRuleLabel,
+                );
+
+                const toggleExpander = row.getToggleExpandedHandler();
+                const fontColor =
+                    conditionalFormattingColor &&
+                    readableColor(conditionalFormattingColor) === 'white'
+                        ? 'white'
                         : undefined;
+
+                const suppressContextMenu =
+                    cell.getIsPlaceholder() || cell.getIsAggregated();
 
                 return (
                     <BodyCell
                         minimal={minimal}
                         key={cell.id}
                         style={meta?.style}
-                        backgroundColor={conditionalFormattingConfig?.color}
-                        fontColor={
-                            conditionalFormattingConfig?.color &&
-                            readableColor(conditionalFormattingConfig.color) ===
-                                'white'
-                                ? 'white'
-                                : undefined
-                        }
+                        backgroundColor={backgroundColor}
+                        fontColor={fontColor}
                         className={meta?.className}
                         index={index}
                         cell={cell}
                         isNumericItem={isNumericItem(meta?.item)}
                         hasData={!!meta?.item}
-                        cellContextMenu={cellContextMenu}
-                        copying={cell.id === copyingCellId}
-                        selected={cell.id === selectedCell?.id}
+                        cellContextMenu={
+                            suppressContextMenu ? undefined : cellContextMenu
+                        }
+                        isLargeText={
+                            (cellValue?.value?.formatted || '').length >
+                            SMALL_TEXT_LENGTH
+                        }
                         tooltipContent={tooltipContent}
-                        onSelect={() => onSelectCell?.(cell)}
-                        onDeselect={() => onSelectCell?.(undefined)}
-                        onKeyDown={(e) => onCopyCell?.(e)}
                     >
-                        {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
+                        {cell.getIsGrouped() ? (
+                            <Group spacing="xxs">
+                                <Button
+                                    compact
+                                    size="xs"
+                                    variant="subtle"
+                                    styles={(theme) => ({
+                                        root: {
+                                            height: 'unset',
+                                            paddingLeft: theme.spacing.two,
+                                            paddingRight: theme.spacing.xxs,
+                                        },
+                                        leftIcon: {
+                                            marginRight: 0,
+                                        },
+                                    })}
+                                    onClick={(
+                                        e: React.MouseEvent<HTMLButtonElement>,
+                                    ) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        toggleExpander();
+                                    }}
+                                    leftIcon={
+                                        <MantineIcon
+                                            size={14}
+                                            icon={
+                                                row.getIsExpanded()
+                                                    ? IconChevronDown
+                                                    : IconChevronRight
+                                            }
+                                        />
+                                    }
+                                    style={{
+                                        color: fontColor ?? 'inherit',
+                                    }}
+                                >
+                                    ({countSubRows(row)})
+                                </Button>
+                                {flexRender(
+                                    cell.column.columnDef.cell,
+                                    cell.getContext(),
+                                )}
+                            </Group>
+                        ) : cell.getIsAggregated() ? (
+                            flexRender(
+                                cell.column.columnDef.aggregatedCell ??
+                                    cell.column.columnDef.cell,
+                                cell.getContext(),
+                            )
+                        ) : cell.getIsPlaceholder() ? null : (
+                            flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext(),
+                            )
                         )}
                     </BodyCell>
                 );
@@ -118,30 +214,26 @@ const TableRow: FC<TableRowProps> = ({
 };
 
 const VirtualizedTableBody: FC<{
-    tableContainerRef: React.RefObject<HTMLDivElement>;
+    tableContainerRef: React.RefObject<HTMLDivElement | null>;
 }> = ({ tableContainerRef }) => {
-    const {
-        table,
-        cellContextMenu,
-        selectedCell,
-        onSelectCell,
-        copyingCellId,
-        onCopyCell,
-        conditionalFormattings,
-    } = useTableContext();
+    const { table, cellContextMenu, conditionalFormattings, minMaxMap } =
+        useTableContext();
     const { rows } = table.getRowModel();
 
-    const rowVirtualizer = useVirtual({
-        parentRef: tableContainerRef,
-        size: rows.length,
+    const rowVirtualizer = useVirtualizer({
+        getScrollElement: () => tableContainerRef.current,
+        count: rows.length,
+        estimateSize: () => ROW_HEIGHT_PX,
         overscan: 25,
     });
-    const { virtualItems: virtualRows, totalSize } = rowVirtualizer;
+
+    const virtualRows = rowVirtualizer.getVirtualItems();
     const paddingTop =
         virtualRows.length > 0 ? virtualRows?.[0]?.start || 0 : 0;
     const paddingBottom =
         virtualRows.length > 0
-            ? totalSize - (virtualRows?.[virtualRows.length - 1]?.end || 0)
+            ? rowVirtualizer.getTotalSize() -
+              (virtualRows?.[virtualRows.length - 1]?.end || 0)
             : 0;
     const cellsCount = rows[0]?.getVisibleCells().length || 0;
 
@@ -157,11 +249,8 @@ const VirtualizedTableBody: FC<{
                         index={index}
                         row={rows[index]}
                         cellContextMenu={cellContextMenu}
-                        selectedCell={selectedCell}
-                        onSelectCell={onSelectCell}
-                        copyingCellId={copyingCellId}
-                        onCopyCell={onCopyCell}
                         conditionalFormattings={conditionalFormattings}
+                        minMaxMap={minMaxMap}
                     />
                 );
             })}
@@ -176,18 +265,21 @@ const VirtualizedTableBody: FC<{
 };
 
 const NormalTableBody: FC = () => {
-    const { table, conditionalFormattings } = useTableContext();
+    const { table, cellContextMenu, conditionalFormattings, minMaxMap } =
+        useTableContext();
     const { rows } = table.getRowModel();
 
     return (
         <tbody>
-            {rows.map((row) => (
+            {rows.map((row, index) => (
                 <TableRow
-                    key={row.index}
+                    key={index}
                     minimal
-                    index={row.index}
+                    index={index}
                     row={row}
+                    cellContextMenu={cellContextMenu}
                     conditionalFormattings={conditionalFormattings}
+                    minMaxMap={minMaxMap}
                 />
             ))}
         </tbody>
@@ -196,7 +288,7 @@ const NormalTableBody: FC = () => {
 
 interface TableBodyProps {
     minimal?: boolean;
-    tableContainerRef: React.RefObject<HTMLDivElement>;
+    tableContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 const TableBody: FC<TableBodyProps> = ({ minimal, tableContainerRef }) => {

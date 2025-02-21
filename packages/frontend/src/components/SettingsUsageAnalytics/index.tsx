@@ -1,9 +1,8 @@
-import { Colors, H5 } from '@blueprintjs/core';
+import { Card, Group, Text } from '@mantine/core';
 import { IconLayoutDashboard } from '@tabler/icons-react';
-import { FC } from 'react';
-import { useHistory } from 'react-router-dom';
-import { Subtitle } from '../../pages/CreateProject.styles';
-import { CardContent, CardWrapper } from './SettingsUsageAnalytics.styles';
+import { type FC } from 'react';
+import { Link } from 'react-router';
+import MantineIcon from '../common/MantineIcon';
 
 interface ProjectUserAccessProps {
     projectUuid: string;
@@ -12,34 +11,31 @@ interface ProjectUserAccessProps {
 const SettingsUsageAnalytics: FC<ProjectUserAccessProps> = ({
     projectUuid,
 }) => {
-    const history = useHistory();
-
     return (
         <>
-            <>
-                <Subtitle>
-                    Lightdash curated dashboards that show usage and performance
-                    information about your project.
-                </Subtitle>
+            <Text color="dimmed">
+                Lightdash curated dashboards that show usage and performance
+                information about your project.
+            </Text>
 
-                <>
-                    <CardWrapper
-                        onClick={() => {
-                            history.push(
-                                `/projects/${projectUuid}/user-activity`,
-                            );
-                        }}
-                    >
-                        <CardContent>
-                            <IconLayoutDashboard
-                                size={20}
-                                color={Colors.GRAY3}
-                            />
-                            <H5>User activity</H5>
-                        </CardContent>
-                    </CardWrapper>
-                </>
-            </>
+            <Card
+                component={Link}
+                shadow="sm"
+                withBorder
+                sx={{ cursor: 'pointer' }}
+                to={`/projects/${projectUuid}/user-activity`}
+            >
+                <Group>
+                    <MantineIcon
+                        icon={IconLayoutDashboard}
+                        size="xl"
+                        color="gray"
+                    />
+                    <Text fw={600} fz="lg">
+                        User Activity
+                    </Text>
+                </Group>
+            </Card>
         </>
     );
 };

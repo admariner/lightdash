@@ -1,34 +1,28 @@
-import React, { FC } from 'react';
-import { Redirect, useParams } from 'react-router-dom';
-import ErrorState from '../components/common/ErrorState';
+import { type FC } from 'react';
+import { Navigate } from 'react-router';
 import PageSpinner from '../components/PageSpinner';
-import { getLastProject, useProjects } from '../hooks/useProjects';
+import ErrorState from '../components/common/ErrorState';
+import { useActiveProjectUuid } from '../hooks/useActiveProject';
+import { useProjects } from '../hooks/useProjects';
 
-export const Projects: FC = () => {
-    const params = useParams<{ projectUuid: string | undefined }>();
-    const { isLoading, data, error } = useProjects();
-    if (isLoading) {
+const Projects: FC = () => {
+    const { isInitialLoading, data, error } = useProjects();
+    const { isLoading: isActiveProjectLoading, activeProjectUuid } =
+        useActiveProjectUuid();
+
+    if (!isInitialLoading && data && data.length === 0) {
+        return <Navigate to="/no-access" />;
+    }
+
+    if (isInitialLoading || isActiveProjectLoading || !activeProjectUuid) {
         return <PageSpinner />;
     }
+
     if (error && error.error) {
         return <ErrorState error={error.error} />;
     }
-    if (!data || data.length <= 0) {
-        return <Redirect to="/no-access" />;
-    }
 
-    const availableProjectUuids = data.map(({ projectUuid }) => projectUuid);
-
-    const find = (projectUuid: string | undefined) => {
-        return projectUuid && availableProjectUuids.includes(projectUuid)
-            ? projectUuid
-            : undefined;
-    };
-    const lastProject = getLastProject();
-    const projectUuid =
-        find(params.projectUuid) ||
-        find(lastProject) ||
-        availableProjectUuids[0];
-
-    return <Redirect to={`/projects/${projectUuid}/home`} />;
+    return <Navigate to={`/projects/${activeProjectUuid}/home`} />;
 };
+
+export default Projects;

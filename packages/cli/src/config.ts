@@ -12,12 +12,16 @@ export type Config = {
     user?: {
         userUuid?: string;
         anonymousUuid?: string;
+        organizationUuid?: string;
     };
     context?: {
         serverUrl?: string;
         project?: string;
+        projectName?: string;
         apiKey?: string;
         proxyAuthorization?: string;
+        previewProject?: string;
+        previewName?: string;
     };
     answers?: {
         permissionToStoreWarehouseCredentials?: boolean;
@@ -33,8 +37,8 @@ const getRawConfig = async (): Promise<Config> => {
     try {
         const raw = yaml.load(await fs.readFile(configFilePath, 'utf8'));
         return raw as Config;
-    } catch (e: any) {
-        if (e.code === 'ENOENT') {
+    } catch (e: unknown) {
+        if (e instanceof Error && 'code' in e && e.code === 'ENOENT') {
             return {} as Config;
         }
         throw e;
@@ -75,24 +79,53 @@ export const getConfig = async (): Promise<Config> => {
     };
 };
 
-export const setProjectUuid = async (projectUuid: string) => {
+export const setProject = async (projectUuid: string, projectName: string) => {
     const config = await getRawConfig();
     await setConfig({
         ...config,
         context: {
             ...(config.context || {}),
             project: projectUuid,
+            projectName,
         },
     });
 };
 
-export const setDefaultUser = async (userUuid: string) => {
+export const setPreviewProject = async (projectUuid: string, name: string) => {
+    const config = await getRawConfig();
+    await setConfig({
+        ...config,
+        context: {
+            ...(config.context || {}),
+            previewProject: projectUuid,
+            previewName: name,
+        },
+    });
+};
+
+export const unsetPreviewProject = async () => {
+    const config = await getRawConfig();
+    await setConfig({
+        ...config,
+        context: {
+            ...(config.context || {}),
+            previewProject: undefined,
+            previewName: undefined,
+        },
+    });
+};
+
+export const setDefaultUser = async (
+    userUuid: string,
+    organizationUuid: string,
+) => {
     const config = await getRawConfig();
     await setConfig({
         ...config,
         user: {
             ...(config.user || {}),
             userUuid,
+            organizationUuid,
         },
     });
 };

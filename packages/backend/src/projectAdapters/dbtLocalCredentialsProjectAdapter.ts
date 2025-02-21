@@ -1,18 +1,19 @@
 import {
     CreateWarehouseCredentials,
     DbtProjectEnvironmentVariable,
+    SupportedDbtVersions,
 } from '@lightdash/common';
 import { WarehouseClient } from '@lightdash/warehouses';
-import { writeFileSync } from 'fs';
+import fs, { writeFileSync } from 'fs';
 import * as fspromises from 'fs/promises';
 import * as path from 'path';
-import tempy from 'tempy';
+import { LightdashAnalytics } from '../analytics/LightdashAnalytics';
 import {
     LIGHTDASH_PROFILE_NAME,
     LIGHTDASH_TARGET_NAME,
     profileFromCredentials,
 } from '../dbt/profiles';
-import Logger from '../logger';
+import Logger from '../logging/logger';
 import { CachedWarehouse } from '../types';
 import { DbtLocalProjectAdapter } from './dbtLocalProjectAdapter';
 
@@ -23,6 +24,10 @@ type DbtLocalCredentialsProjectAdapterArgs = {
     targetName: string | undefined;
     environment: DbtProjectEnvironmentVariable[] | undefined;
     cachedWarehouse: CachedWarehouse;
+    dbtVersion: SupportedDbtVersions;
+    useDbtLs: boolean;
+    selector?: string;
+    analytics?: LightdashAnalytics;
 };
 
 export class DbtLocalCredentialsProjectAdapter extends DbtLocalProjectAdapter {
@@ -35,9 +40,14 @@ export class DbtLocalCredentialsProjectAdapter extends DbtLocalProjectAdapter {
         targetName,
         environment,
         cachedWarehouse,
+        dbtVersion,
+        useDbtLs,
+        selector,
+        analytics,
     }: DbtLocalCredentialsProjectAdapterArgs) {
-        const profilesDir = tempy.directory();
+        const profilesDir = fs.mkdtempSync('/tmp/local_');
         const profilesFilename = path.join(profilesDir, 'profiles.yml');
+
         const {
             profile,
             environment: injectedEnvironment,
@@ -72,6 +82,10 @@ export class DbtLocalCredentialsProjectAdapter extends DbtLocalProjectAdapter {
             projectDir,
             environment: updatedEnvironment,
             cachedWarehouse,
+            dbtVersion,
+            useDbtLs,
+            selector,
+            analytics,
         });
         this.profilesDir = profilesDir;
     }

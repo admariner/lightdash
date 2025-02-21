@@ -1,11 +1,9 @@
 import {
-    OrganizationMemberProfile,
     OrganizationMemberRole,
+    type OrganizationMemberProfile,
 } from '../types/organizationMemberProfile';
-import {
-    ProjectMemberProfile,
-    ProjectMemberRole,
-} from '../types/projectMemberProfile';
+import { type ProjectMemberProfile } from '../types/projectMemberProfile';
+import { ProjectMemberRole } from '../types/projectMemberRole';
 
 export const userWithoutOrg = {
     userUuid: 'user-uuid-1234',
@@ -18,6 +16,8 @@ export const orgProfile: OrganizationMemberProfile = {
     lastName: '',
     organizationUuid: 'organization-uuid-view',
     isActive: true,
+    userCreatedAt: new Date(),
+    userUpdatedAt: new Date(),
 };
 export const projectProfile: ProjectMemberProfile = {
     userUuid: 'user-uuid-1234',
@@ -43,4 +43,5 @@ export const adminProjectProfile = {
 export const conditions = {
     organizationUuid: orgProfile.organizationUuid,
     projectUuid: projectProfile.projectUuid,
+    isPrivate: false,
 };

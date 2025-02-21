@@ -12,21 +12,20 @@
     <a href="http://www.lightdash.com"><b>Website</b></a> •
     <a href="https://www.loom.com/share/c0805a236a994de397ac5142fdfe4b7f"><b>Watch demo</b></a> •
     <a href="http://docs.lightdash.com/"><b>Docs</b></a> •
-    <a href="https://join.slack.com/t/lightdash-community/shared_invite/zt-16q953ork-NZr1qdEqxSwB17E2ckUe7A"><b>Join Slack Community</b></a>
+    <a href="https://join.slack.com/t/lightdash-community/shared_invite/zt-2uwa5s9jl-xTNyjJ7otC8wH3jB8qgCpA"><b>Join Slack Community</b></a>
 </p>
 <div align="center">
 <img src="https://img.shields.io/github/license/lightdash/lightdash" />
 </div>
 <div align="center">
 <img src="https://img.shields.io/docker/cloud/build/lightdash/lightdash" />
-<img src="https://img.shields.io/snyk/vulnerabilities/github/lightdash/lightdash?label=snyk%20vulnerabilities" />
 </div>
 <div align="center">
 <img src="https://img.shields.io/github/languages/top/lightdash/lightdash" />
 <img src="https://img.shields.io/docker/v/lightdash/lightdash?label=latest%20image" />
 <img src="https://img.shields.io/github/package-json/dependency-version/lightdash/lightdash/react?filename=packages%2Ffrontend%2Fpackage.json" />
 <img src="https://img.shields.io/github/package-json/dependency-version/lightdash/lightdash/express?filename=packages%2Fbackend%2Fpackage.json" />
-<img src="https://img.shields.io/static/v1?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAFBlWElmTU0AKgAAAAgAAgESAAMAAAABAAEAAIdpAAQAAAABAAAAJgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAIKADAAQAAAABAAAAIAAAAAC+W0ztAAABWWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNi4wLjAiPgogICA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPgogICAgICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgICAgICAgICB4bWxuczp0aWZmPSJodHRwOi8vbnMuYWRvYmUuY29tL3RpZmYvMS4wLyI+CiAgICAgICAgIDx0aWZmOk9yaWVudGF0aW9uPjE8L3RpZmY6T3JpZW50YXRpb24+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgoZXuEHAAAFGElEQVRYCbVXXWwUVRQ+Z2ZsgYKJoSqgRkhjDARFHxD8eagxpXah9bepEYyCuNAfbGtMNOGlD0YT0iC0pQtVChqskSpqpWDtCy+CYDCiQfqgNkYsUCQaaLfN/szxu9Od3Z2dnd3tRk5yZ+49/3PuueeeYQJIw6pFFDEaibkay0Iis4dMvZ32HP6VQVY8+QKEmfy+paRzLVQp/UHY6SXd3MHtR8+z1PvuhImdGJUgajFDYayHsNpLuvSA8XI+Doi/fD7p+tPwQRlfnKQ/gvmXxJFmls2+7fBxCxBGGiOTwJ2AggBFtX7u+iqYhseFktdXFVFQKyfRmkBciXGDi4kojEi0sdT6zoN4WxqGZNS/+AJ4LLsocvlH7jodTibac2kpNWh0xv1EeiOJVAE/x6Z5vC8oB1R4iz0YktEqF/5AtD4gU3uPdx/+y0FsKFtA0YKNcPQl4BdiIH2ygVzBniMhkHXZWEFXChciN7YSm59h616QDVWJLxTtJhjHftOiGC9eGSFCwgdYNlUsIY0/Buu9GdndxGtADSLU2+nK7O+5tzckteWrEf5u4G9xs7swPyHJq60wYRvqQX4XI12yuCRTEBcQnH2kSRfGRYpwB+jYiowwiXi+yZ1Hdk4du7DxKdiPZxTxJs5H6N/AJn5BEZxz1k6Bddyb3aIcp4j+kZpZEVAT7OkzWO3DNLGvijA9uAr23zHuxpjpIYoTxX4O9KvcixcezIIDcOOQh1Cu6BvBeB+Gl3GQcJxRU2yFduUj7jw2hmQMgPCnTbwO72F8aXtyQYs7YBm7OXga1Wk/5tHrYDyEQraXbh0/k6w7ngM2UvwVJYjE58iHe2xchvdvoKmPUGc/M4j8QEakkjsGR5IZnRFQlAUrhmF8MJnJY34KcVqLPX0eSaUyPzMwH6Pihy+mMrkc4JYWVRXPpTKmrIdRjpu468hJDhz9jqLyKugqGpngXEy3g8flgIPqvTBJzET5Zk3pyUuXS0haWhRO3d2ZoIR0apPaipXi961ABdwB5mx5sDim26HXcKzU4u9v55EYpTgNLlIK4gHsfQ8cQSSkJIXmXgqV0chJ5aRjqxwRsO5zs2A9jC91a0iLUQqzG1eiTEvI0F60bCSpcjhAl4qW4XZ7GfSCJJ7/a4pYyXoaLULkEhB3QPyVs9AWbAEp214mpKc7Y7odH1gvdaWzbdG4A0ikcsSpyiakeU8gjEPgGUtDmw6qElfF47aA5QC+vhhdTgOQ6Go8AR0MbcPxQ79HP4Mr33I9B51Qk2xeY/WhUxHQIs9B4UOepqcIuKZ5OU1O4J9BnkLmtwKNZiQvQB5EoQMaZdOau0gzD2KurtFsMArBDRwY6Jfq6gKaO7YcJ+Y1CJVhwMFpwS/Ih3UsdatbMWmEqLsmpNd3hrToWt41cFaRrca0IIRmRqvDchlGridIVdIuDcZxoeRkXLXluM/5EPLlH8wt4O6+a7z76/2kG09C11tAggdZkh3U9tfgIYma7i2EDlg+hOEa3Odvp16pSow7+kZo3sQ7FNWfxbIbI+6konvAVXsL1G2WriMOAX8ChttoljnArd9kazYtO9JcPZOC44/gemoG4lGMGRbB+cD/p2yDA0/cQRJWl4mqAXYe4Lajszj3ewgdM7/fd8kpm9tK6h+bS2Yh6ou8ghg9CKnCmGQIxg+g8dnKCmH9IZvSBKYarJBE2kEYb6fO/iEw5LKfMb3pX1Nn3tyIE7MO6hBV/oQMM6D+uv8DkW2UCxkdSUoAAAAASUVORK5CYII=&label=dbt-version&message=1.3.0&color=orange" />
+<img src="https://img.shields.io/static/v1?logo=data:image/png;base64,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&label=dbt-version&message=1.5.3&color=orange" />
 </div>
 
 <div align="center">
@@ -46,12 +45,15 @@ Come join the team, [we're hiring](https://lightdash.notion.site/Lightdash-Job-B
 - [x] 🙏 Familiar interface for your users to self-serve using pre-defined metrics
 - [x] 👩‍💻 Declare dimensions and metrics in yaml alongside your dbt project
 - [x] 🤖 Automatically creates dimensions from your dbt models
-- [x] 📖 All dbt descriptions synced for your users
+- [x] 📖 dbt descriptions and metadata synced for your users
+- [x] 🔍 Easily access to underlying records of charts as well as ability to data drill-down
 - [x] 🧮 Table calculations make it easy to dig into your data, on the fly
 - [x] 🕵️‍♀️ Lineage lets you see the upstream and downstream dependencies of a model
-- [x] 📊 Simple data visualisations for your metrics
+- [x] 📊 Comprehensive and intuitive data visualisation library for your metrics
 - [x] 👷‍♂️ Save charts & build dashboards to share your insights with your team
-- [x] 🚀 Share your work as a URL or export results to use in any other tool
+- [x] 💻 Powerful developer experience including Preview BI Environments and automated content validation via CI/CD
+- [x] 🔄 Explore version history of all your charts and roll-back at any point
+- [x] 🚀 Easily share your work via URL or schedule deliveries via Slack or Email
 
 Something missing? Check out our [open issues](https://github.com/lightdash/lightdash/issues)
 to see if what you're looking for already exists (and give it a 👍). Otherwise, we'd love it if
@@ -63,29 +65,25 @@ Play with our [demo app](https://demo.lightdash.com)!
 
 ## Quick start
 
+### Start with Lightdash Cloud
+
+You can avoid the hassle of hosting and configuring Lightdash yourself by [signing up for a free trial of Lightdash Cloud](https://app.lightdash.cloud/register). More details on pricing [available](https://www.lightdash.com/pricing).
+
 ### 1-click deploy
 
-Deploy Lightdash with 1-click (free options available
+Deploy Lightdash with 1-click on [Render](https://render.com) for free.
 
 <div>
 
 <a href="https://render.com/deploy?repo=https://github.com/lightdash/lightdash-deploy-render">
   <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render">
 </a>
-<a href="https://heroku.com/deploy?template=https://github.com/lightdash/lightdash-deploy-heroku">
-  <img src="https://www.herokucdn.com/deploy/button.svg" alt="Deploy to heroku" width="200">
-</a>
-</div>
 
-Deploy your own hosted Lightdash instance with Heroku (free account available). Check
-the [documentation page](https://docs.lightdash.com/get-started/setup-lightdash/install-lightdash#deploy-to-heroku) for
-more details.
+</div>
 
 ### Run locally
 
-Take advantage of our installation script to easily run Lightdash locally. Check
-the [documentation page](https://docs.lightdash.com/get-started/setup-lightdash/install-lightdash#deploy-locally-with-our-installation-script)
-for more details.
+Take advantage of our installation script to easily run Lightdash locally.
 
 ```bash
 git clone https://github.com/lightdash/lightdash
@@ -95,16 +93,13 @@ cd lightdash
 
 ### Deploy to production
 
-Follow our [kubernetes guide](https://docs.lightdash.com/guides/how-to-deploy-to-kubernetes) to deploy Lightdash to
+Follow our [kubernetes guide](https://docs.lightdash.com/self-host/self-host-lightdash) to deploy Lightdash to
 production using our [community helm charts](https://github.com/lightdash/helm-charts).
 
-### Sign up to Lightdash Cloud
-
-You can avoid the hassle of hosting and configuring Lightdash yourself by [signing up for Lightdash Cloud Public Beta](https://lightdash.typeform.com/public-beta#source=github) . We'll let you know once we're ready to bring you on board 🙂
 
 ## Getting started
 
-Step 1 - ⚡️ [Install Lightdash](https://docs.lightdash.com/get-started/setup-lightdash/install-lightdash)
+Step 1 - ⚡️ [Self-host Lightdash (optional)](https://docs.lightdash.com/self-host/self-host-lightdash)
 
 Step 2 - 🔌 [Connect a project](https://docs.lightdash.com/get-started/setup-lightdash/connect-project)
 
@@ -112,9 +107,9 @@ Step 3 - 👩‍💻 [Create your first metric](https://docs.lightdash.com/get-s
 
 ## Community Support
 
-📣 If you want something a bit more, then [head on over to our Slack Community](https://join.slack.com/t/lightdash-community/shared_invite/zt-1bfmfnyfq-nSeTVj0cT7i2ekAHYbBVdQ) where you’ll be able to chat directly with all of us at Lightdash and all the other amazing members of our community. We’re happy to talk about anything from feature requests, implementation details or dbt quirks to memes and SQL jokes!
+📣 If you want something a bit more, then [head on over to our Slack Community](https://join.slack.com/t/lightdash-community/shared_invite/zt-2uwa5s9jl-xTNyjJ7otC8wH3jB8qgCpA) where you’ll be able to chat directly with all of us at Lightdash and all the other amazing members of our community. We’re happy to talk about anything from feature requests, implementation details or dbt quirks to memes and SQL jokes!
 
-You can also keep up to date with Lightdash by following us elsewhere:
+You can also keep up to date with Lightdash by following us here:
 
 - [Twitter](https://twitter.com/lightdash_devs)
 - [LinkedIn](https://www.linkedin.com/company/lightdash)
@@ -154,7 +149,7 @@ With Lightdash, we offer a free self-hosted service (it's all just open source!)
 ## Docs
 
 Have a question about a feature? Or maybe fancy some light reading? Head on over to
-our [Lightdash documentation](https://docs.lightdash.com/) to check out some tutorials, reference docs, FAQs and more.
+our [Lightdash documentation](https://docs.lightdash.com/) to check out our tutorials, reference docs, FAQs and more.
 
 ## Reporting bugs and feature requests
 
@@ -274,7 +269,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/magants"><img src="https://avatars.githubusercontent.com/u/83379220?v=4?s=100" width="100px;" alt="magants"/><br /><sub><b>magants</b></sub></a><br /><a href="#ideas-magants" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/mcarlsson/"><img src="https://avatars.githubusercontent.com/u/7769335?v=4?s=100" width="100px;" alt="Martin Carlsson"/><br /><sub><b>Martin Carlsson</b></sub></a><br /><a href="#ideas-Martin-Carlsson" title="Ideas, Planning, & Feedback">🤔</a> <a href="https://github.com/lightdash/lightdash/issues?q=author%3AMartin-Carlsson" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/toinbis"><img src="https://avatars.githubusercontent.com/u/68685?v=4?s=100" width="100px;" alt="Tomas Čerkasas"/><br /><sub><b>Tomas Čerkasas</b></sub></a><br /><a href="#ideas-toinbis" title="Ideas, Planning, & Feedback">🤔</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/TiFaBl"><img src="https://avatars.githubusercontent.com/u/38563080?v=4?s=100" width="100px;" alt="TiFaBl"/><br /><sub><b>TiFaBl</b></sub></a><br /><a href="#ideas-TiFaBl" title="Ideas, Planning, & Feedback">🤔</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/TiFaBl"><img src="https://avatars.githubusercontent.com/u/1732972?v=4?s=100" width="100px;" alt="TiFaBl"/><br /><sub><b>TiFaBl</b></sub></a><br /><a href="#ideas-TiFaBl" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="http://ericcecchi.com"><img src="https://avatars.githubusercontent.com/u/1455025?v=4?s=100" width="100px;" alt="Eric Cecchi"/><br /><sub><b>Eric Cecchi</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=ericcecchi" title="Code">💻</a></td>
     </tr>
     <tr>
@@ -298,7 +293,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/kailin-lu"><img src="https://avatars.githubusercontent.com/u/31902827?v=4?s=100" width="100px;" alt="Kailin L"/><br /><sub><b>Kailin L</b></sub></a><br /><a href="#ideas-kailin-lu" title="Ideas, Planning, & Feedback">🤔</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/metin-karakus-b586b6132"><img src="https://avatars.githubusercontent.com/u/61006227?v=4?s=100" width="100px;" alt="Metin Karakus"/><br /><sub><b>Metin Karakus</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=m-karakus" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/yasmin-e"><img src="https://avatars.githubusercontent.com/u/67699259?v=4?s=100" width="100px;" alt="Yasmine"/><br /><sub><b>Yasmine</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=yasmin-e" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/yasmin-e"><img src="https://avatars.githubusercontent.com/u/67699259?v=4?s=100" width="100px;" alt="Yasmine"/><br /><sub><b>Yasmine</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=yasmin-e" title="Code">💻</a> <a href="https://github.com/lightdash/lightdash/issues?q=author%3Ayasmin-e" title="Bug reports">🐛</a> <a href="#ideas-yasmin-e" title="Ideas, Planning, & Feedback">🤔</a> <a href="#design-yasmin-e" title="Design">🎨</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://piotr.pilis.pl/"><img src="https://avatars.githubusercontent.com/u/29205792?v=4?s=100" width="100px;" alt="Piotr Pilis"/><br /><sub><b>Piotr Pilis</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=pilis" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/judahrand"><img src="https://avatars.githubusercontent.com/u/17158624?v=4?s=100" width="100px;" alt="Judah Rand"/><br /><sub><b>Judah Rand</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3Ajudahrand" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://annebelleo.github.io"><img src="https://avatars.githubusercontent.com/u/20630578?v=4?s=100" width="100px;" alt="Annebelle Olminkhof"/><br /><sub><b>Annebelle Olminkhof</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=annebelleo" title="Documentation">📖</a></td>
@@ -316,6 +311,95 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="http://mikethoun.com"><img src="https://avatars.githubusercontent.com/u/8367471?v=4?s=100" width="100px;" alt="Mike Thoun"/><br /><sub><b>Mike Thoun</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=mikethoun" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="http://leonkozlowski.com"><img src="https://avatars.githubusercontent.com/u/24438337?v=4?s=100" width="100px;" alt="Leon Kozlowski"/><br /><sub><b>Leon Kozlowski</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=leonkozlowski" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/nathancoleman"><img src="https://avatars.githubusercontent.com/u/3476400?v=4?s=100" width="100px;" alt="Nathan Coleman"/><br /><sub><b>Nathan Coleman</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=nathancoleman" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://jnfrati.tk"><img src="https://avatars.githubusercontent.com/u/23369263?v=4?s=100" width="100px;" alt="Nicolas Frati"/><br /><sub><b>Nicolas Frati</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=jnfrati" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/fredmny"><img src="https://avatars.githubusercontent.com/u/27257093?v=4?s=100" width="100px;" alt="Fred"/><br /><sub><b>Fred</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=fredmny" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/gictor"><img src="https://avatars.githubusercontent.com/u/2518420?v=4?s=100" width="100px;" alt="Victor Lindell"/><br /><sub><b>Victor Lindell</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=gictor" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/stellar-ahmed"><img src="https://avatars.githubusercontent.com/u/125902091?v=4?s=100" width="100px;" alt="stellar-ahmed"/><br /><sub><b>stellar-ahmed</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3Astellar-ahmed" title="Bug reports">🐛</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/coopkw"><img src="https://avatars.githubusercontent.com/u/82987430?v=4?s=100" width="100px;" alt="Cooper Williams"/><br /><sub><b>Cooper Williams</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=coopkw" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/lokeswaran-aj"><img src="https://avatars.githubusercontent.com/u/74011196?v=4?s=100" width="100px;" alt="Lokeswaran Aruljothi"/><br /><sub><b>Lokeswaran Aruljothi</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=lokeswaran-aj" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/joaoviana"><img src="https://avatars.githubusercontent.com/u/7611706?v=4?s=100" width="100px;" alt="João Viana"/><br /><sub><b>João Viana</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=joaoviana" title="Documentation">📖</a> <a href="https://github.com/lightdash/lightdash/commits?author=joaoviana" title="Code">💻</a> <a href="https://github.com/lightdash/lightdash/issues?q=author%3Ajoaoviana" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/muhammadjufry"><img src="https://avatars.githubusercontent.com/u/97773130?v=4?s=100" width="100px;" alt="Muhammad Jufry"/><br /><sub><b>Muhammad Jufry</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3Amuhammadjufry" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/patrikbraborec"><img src="https://avatars.githubusercontent.com/u/18550315?v=4?s=100" width="100px;" alt="Patrik Braborec"/><br /><sub><b>Patrik Braborec</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=patrikbraborec" title="Documentation">📖</a> <a href="https://github.com/lightdash/lightdash/issues?q=author%3Apatrikbraborec" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/rawkode"><img src="https://avatars.githubusercontent.com/u/145816?v=4?s=100" width="100px;" alt="David Flanagan"/><br /><sub><b>David Flanagan</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=rawkode" title="Code">💻</a> <a href="#infra-rawkode" title="Infrastructure (Hosting, Build-Tools, etc)">🚇</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://pullstack.ninja/"><img src="https://avatars.githubusercontent.com/u/22260031?v=4?s=100" width="100px;" alt="Moulik Aggarwal"/><br /><sub><b>Moulik Aggarwal</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=aggmoulik" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/CVamsi27"><img src="https://avatars.githubusercontent.com/u/55316723?v=4?s=100" width="100px;" alt="Chandaluri Vamsi Krishna"/><br /><sub><b>Chandaluri Vamsi Krishna</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=CVamsi27" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/elton-okawa"><img src="https://avatars.githubusercontent.com/u/24387035?v=4?s=100" width="100px;" alt="Elton Okawa"/><br /><sub><b>Elton Okawa</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=elton-okawa" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jayanand05"><img src="https://avatars.githubusercontent.com/u/113882904?v=4?s=100" width="100px;" alt="JAY ANAND"/><br /><sub><b>JAY ANAND</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=jayanand05" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://www.linkedin.com/in/yuishikawa0301/"><img src="https://avatars.githubusercontent.com/u/1523515?v=4?s=100" width="100px;" alt="Yu Ishikawa"/><br /><sub><b>Yu Ishikawa</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=yu-iskw" title="Code">💻</a> <a href="#ideas-yu-iskw" title="Ideas, Planning, & Feedback">🤔</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/magnew"><img src="https://avatars.githubusercontent.com/u/1864179?v=4?s=100" width="100px;" alt="magnew"/><br /><sub><b>magnew</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=magnew" title="Code">💻</a> <a href="https://github.com/lightdash/lightdash/issues?q=author%3Amagnew" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://advith.me"><img src="https://avatars.githubusercontent.com/u/4915950?v=4?s=100" width="100px;" alt="Advith Chelikani"/><br /><sub><b>Advith Chelikani</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3AAChelikani" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://pranavdhar.netlify.com"><img src="https://avatars.githubusercontent.com/u/73348574?v=4?s=100" width="100px;" alt="Sai Pranavdhar Reddy N"/><br /><sub><b>Sai Pranavdhar Reddy N</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=iampranavdhar" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ujwalkumar1995"><img src="https://avatars.githubusercontent.com/u/20976813?v=4?s=100" width="100px;" alt="Ujwal Kumar"/><br /><sub><b>Ujwal Kumar</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=ujwalkumar1995" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/nimit9"><img src="https://avatars.githubusercontent.com/u/37402791?v=4?s=100" width="100px;" alt="Nimit Haria"/><br /><sub><b>Nimit Haria</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=nimit9" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/tnightengale"><img src="https://avatars.githubusercontent.com/u/17347282?v=4?s=100" width="100px;" alt="Teghan Nightengale"/><br /><sub><b>Teghan Nightengale</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=tnightengale" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/dmattia"><img src="https://avatars.githubusercontent.com/u/8922077?v=4?s=100" width="100px;" alt="David Mattia"/><br /><sub><b>David Mattia</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=dmattia" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ayush117"><img src="https://avatars.githubusercontent.com/u/25580209?v=4?s=100" width="100px;" alt="Ayush Trivedi"/><br /><sub><b>Ayush Trivedi</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=ayush117" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/zoltan-kski"><img src="https://avatars.githubusercontent.com/u/2300833?v=4?s=100" width="100px;" alt="Zoltan K."/><br /><sub><b>Zoltan K.</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=zoltan-kski" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://my-portfolio-ankush263.vercel.app/"><img src="https://avatars.githubusercontent.com/u/86042508?v=4?s=100" width="100px;" alt="Ankush Banik"/><br /><sub><b>Ankush Banik</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=Ankush263" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/karan0handa"><img src="https://avatars.githubusercontent.com/u/79533543?v=4?s=100" width="100px;" alt="Karan Handa"/><br /><sub><b>Karan Handa</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=karan0handa" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/rohitverma007"><img src="https://avatars.githubusercontent.com/u/3745109?v=4?s=100" width="100px;" alt="Rohit Verma"/><br /><sub><b>Rohit Verma</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=rohitverma007" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://dwitkowski.eu"><img src="https://avatars.githubusercontent.com/u/43667775?v=4?s=100" width="100px;" alt="David Witkowski"/><br /><sub><b>David Witkowski</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=chodera" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/iMac7"><img src="https://avatars.githubusercontent.com/u/76876702?v=4?s=100" width="100px;" alt="iMac"/><br /><sub><b>iMac</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=iMac7" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Kobold"><img src="https://avatars.githubusercontent.com/u/36694?v=4?s=100" width="100px;" alt="Andy Kish"/><br /><sub><b>Andy Kish</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=Kobold" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://bilal.cc"><img src="https://avatars.githubusercontent.com/u/55330484?v=4?s=100" width="100px;" alt="Bilal Ahmad Bhat"/><br /><sub><b>Bilal Ahmad Bhat</b></sub></a><br /><a href="#ideas-crediblebilal" title="Ideas, Planning, & Feedback">🤔</a> <a href="https://github.com/lightdash/lightdash/commits?author=crediblebilal" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Shifan-Gu"><img src="https://avatars.githubusercontent.com/u/101873365?v=4?s=100" width="100px;" alt="Shifan Gu"/><br /><sub><b>Shifan Gu</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3AShifan-Gu" title="Bug reports">🐛</a> <a href="https://github.com/lightdash/lightdash/commits?author=Shifan-Gu" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/dansreis"><img src="https://avatars.githubusercontent.com/u/9052608?v=4?s=100" width="100px;" alt="Daniel Reis"/><br /><sub><b>Daniel Reis</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=dansreis" title="Code">💻</a> <a href="https://github.com/lightdash/lightdash/issues?q=author%3Adansreis" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jogeshwar01"><img src="https://avatars.githubusercontent.com/u/85165953?v=4?s=100" width="100px;" alt="Jogeshwar Singh"/><br /><sub><b>Jogeshwar Singh</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=jogeshwar01" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/lancerael"><img src="https://avatars.githubusercontent.com/u/11949472?v=4?s=100" width="100px;" alt="lancerael"/><br /><sub><b>lancerael</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=lancerael" title="Code">💻</a> <a href="https://github.com/lightdash/lightdash/issues?q=author%3Alancerael" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://ulisesgascon.com/"><img src="https://avatars.githubusercontent.com/u/5110813?v=4?s=100" width="100px;" alt="Ulises Gascón"/><br /><sub><b>Ulises Gascón</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=UlisesGascon" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/GtheSheep"><img src="https://avatars.githubusercontent.com/u/13685708?v=4?s=100" width="100px;" alt="Gary James"/><br /><sub><b>Gary James</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=GtheSheep" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/almeidabbm"><img src="https://avatars.githubusercontent.com/u/22939015?v=4?s=100" width="100px;" alt="Bruno Almeida"/><br /><sub><b>Bruno Almeida</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=almeidabbm" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/filp"><img src="https://avatars.githubusercontent.com/u/382538?v=4?s=100" width="100px;" alt="Filipe Dobreira"/><br /><sub><b>Filipe Dobreira</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=filp" title="Documentation">📖</a> <a href="https://github.com/lightdash/lightdash/commits?author=filp" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/joemiltonm"><img src="https://avatars.githubusercontent.com/u/64725924?v=4?s=100" width="100px;" alt="Joe Milton"/><br /><sub><b>Joe Milton</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=joemiltonm" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://lassu.dev"><img src="https://avatars.githubusercontent.com/u/30611343?v=4?s=100" width="100px;" alt="Andras Lassu"/><br /><sub><b>Andras Lassu</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=la55u" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/chasewoo"><img src="https://avatars.githubusercontent.com/u/1282787?v=4?s=100" width="100px;" alt="Chase Wu"/><br /><sub><b>Chase Wu</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=chasewoo" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/agha4to"><img src="https://avatars.githubusercontent.com/u/138995798?v=4?s=100" width="100px;" alt="agha4to"/><br /><sub><b>agha4to</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=agha4to" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/sakce"><img src="https://avatars.githubusercontent.com/u/49978945?v=4?s=100" width="100px;" alt="Jovan Sakovic"/><br /><sub><b>Jovan Sakovic</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=sakce" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Inder782"><img src="https://avatars.githubusercontent.com/u/124162738?v=4?s=100" width="100px;" alt="Inder Singh Chandel"/><br /><sub><b>Inder Singh Chandel</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=Inder782" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/anshul45"><img src="https://avatars.githubusercontent.com/u/80778090?v=4?s=100" width="100px;" alt="Anshul Garwal"/><br /><sub><b>Anshul Garwal</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=anshul45" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/jpetey75"><img src="https://avatars.githubusercontent.com/u/5532776?v=4?s=100" width="100px;" alt="Jake Peterson"/><br /><sub><b>Jake Peterson</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=jpetey75" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/cooldude6000"><img src="https://avatars.githubusercontent.com/u/143312648?v=4?s=100" width="100px;" alt="cooldude6000"/><br /><sub><b>cooldude6000</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=cooldude6000" title="Documentation">📖</a> <a href="https://github.com/lightdash/lightdash/commits?author=cooldude6000" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/calculuslmvt"><img src="https://avatars.githubusercontent.com/u/55044051?v=4?s=100" width="100px;" alt="AYUSH SINGH"/><br /><sub><b>AYUSH SINGH</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=calculuslmvt" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/xinlingqudongX"><img src="https://avatars.githubusercontent.com/u/26372348?v=4?s=100" width="100px;" alt="xinlingqudongX"/><br /><sub><b>xinlingqudongX</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/issues?q=author%3AxinlingqudongX" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/aayushi1995"><img src="https://avatars.githubusercontent.com/u/25344927?v=4?s=100" width="100px;" alt="Aayushi Kambariya"/><br /><sub><b>Aayushi Kambariya</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=aayushi1995" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/maxdiplogit"><img src="https://avatars.githubusercontent.com/u/111004544?v=4?s=100" width="100px;" alt="Harshmeet Singh"/><br /><sub><b>Harshmeet Singh</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=maxdiplogit" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/andrewdw"><img src="https://avatars.githubusercontent.com/u/4855214?v=4?s=100" width="100px;" alt="Andrew Dillion-Walshe"/><br /><sub><b>Andrew Dillion-Walshe</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=andrewdw" title="Code">💻</a> <a href="https://github.com/lightdash/lightdash/commits?author=andrewdw" title="Documentation">📖</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://dub.sh/MUN9v4r"><img src="https://avatars.githubusercontent.com/u/89914602?v=4?s=100" width="100px;" alt="Ayush Sharma"/><br /><sub><b>Ayush Sharma</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=ayush3160" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/sanjay-sol"><img src="https://avatars.githubusercontent.com/u/114111046?v=4?s=100" width="100px;" alt="sanjay sirangi"/><br /><sub><b>sanjay sirangi</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=sanjay-sol" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/varunguleriaCodes"><img src="https://avatars.githubusercontent.com/u/152203177?v=4?s=100" width="100px;" alt="Varun Guleria"/><br /><sub><b>Varun Guleria</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=varunguleriaCodes" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Guru6163"><img src="https://avatars.githubusercontent.com/u/42559222?v=4?s=100" width="100px;" alt="Guruprasath Sankaran"/><br /><sub><b>Guruprasath Sankaran</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=Guru6163" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/VenkataRohan"><img src="https://avatars.githubusercontent.com/u/83659881?v=4?s=100" width="100px;" alt="VenkataRohan"/><br /><sub><b>VenkataRohan</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=VenkataRohan" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/inverts"><img src="https://avatars.githubusercontent.com/u/4111862?v=4?s=100" width="100px;" alt="Dave"/><br /><sub><b>Dave</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=inverts" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/BhuvaneshPatil"><img src="https://avatars.githubusercontent.com/u/27822551?v=4?s=100" width="100px;" alt="Bhuvanesh"/><br /><sub><b>Bhuvanesh</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=BhuvaneshPatil" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://parthiblol.netlify.app"><img src="https://avatars.githubusercontent.com/u/94271200?v=4?s=100" width="100px;" alt="Parthib Datta"/><br /><sub><b>Parthib Datta</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=ptdatta" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://zhyd1997.eth.limo"><img src="https://avatars.githubusercontent.com/u/31362988?v=4?s=100" width="100px;" alt="Yadong Zhang"/><br /><sub><b>Yadong Zhang</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=zhyd1997" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://yshplsngh.in"><img src="https://avatars.githubusercontent.com/u/134866490?v=4?s=100" width="100px;" alt="Yashpal"/><br /><sub><b>Yashpal</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=yshplsngh" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/stajics"><img src="https://avatars.githubusercontent.com/u/17711182?v=4?s=100" width="100px;" alt="Srdjan Stajic"/><br /><sub><b>Srdjan Stajic</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=stajics" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/RANJITHp07"><img src="https://avatars.githubusercontent.com/u/107017062?v=4?s=100" width="100px;" alt="Ranjth P"/><br /><sub><b>Ranjth P</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=RANJITHp07" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://basitbalogun.vercel.app/"><img src="https://avatars.githubusercontent.com/u/68718781?v=4?s=100" width="100px;" alt="Basit Balogun"/><br /><sub><b>Basit Balogun</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=Basit-Balogun10" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="http://twitter.com/notgiorgi"><img src="https://avatars.githubusercontent.com/u/12987425?v=4?s=100" width="100px;" alt="Giorgi Bagdavadze"/><br /><sub><b>Giorgi Bagdavadze</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=notgiorgi" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/anoopw3bdev"><img src="https://avatars.githubusercontent.com/u/44577841?v=4?s=100" width="100px;" alt="Anoop P"/><br /><sub><b>Anoop P</b></sub></a><br /><a href="https://github.com/lightdash/lightdash/commits?author=anoopw3bdev" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -327,5 +411,3 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 
 This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification.
 Contributions of any kind welcome!
-
-+

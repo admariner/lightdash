@@ -1,59 +1,147 @@
-import { Card, Divider, H3 } from '@blueprintjs/core';
-import React, { FC } from 'react';
-import styled from 'styled-components';
-import { TrackSection } from '../../../providers/TrackingProvider';
+import {
+    Box,
+    Flex,
+    Paper,
+    Transition,
+    getDefaultZIndex,
+    type FlexProps,
+    type MantineTransition,
+} from '@mantine/core';
+import { type FC } from 'react';
+import useSidebarResize from '../../../hooks/useSidebarResize';
+import { TrackSection } from '../../../providers/Tracking/TrackingProvider';
 import { SectionName } from '../../../types/Events';
-import AboutFooter from '../../AboutFooter';
+import {
+    SIDEBAR_DEFAULT_WIDTH,
+    SIDEBAR_MIN_WIDTH,
+    SIDEBAR_RESIZE_HANDLE_WIDTH,
+} from './constants';
+import { SidebarPosition, type SidebarWidthProps } from './types';
 
-export const SIDEBAR_WIDTH = 400;
-export const SIDEBAR_Z_INDEX = 1;
+type Props = {
+    isOpen?: boolean;
+    containerProps?: FlexProps;
+    position?: SidebarPosition;
+    widthProps?: SidebarWidthProps;
+    noSidebarPadding?: boolean;
+    mainWidth?: number;
+    onResizeStart?: () => void;
+    onResizeEnd?: () => void;
+};
 
-const SidebarWrapper = styled(Card)`
-    height: calc(100vh - 50px);
-    flex-basis: ${SIDEBAR_WIDTH}px;
-    z-index: ${SIDEBAR_Z_INDEX};
-    flex-shrink: 0;
-    flex-grow: 0;
-    overflow: hidden;
-    position: sticky;
-    top: 50px;
-    padding-bottom: 0;
-`;
+const Sidebar: FC<React.PropsWithChildren<Props>> = ({
+    isOpen = true,
+    containerProps,
+    position = SidebarPosition.LEFT,
+    widthProps = {},
+    mainWidth,
+    children,
+    noSidebarPadding,
+    onResizeStart,
+    onResizeEnd,
+}) => {
+    const {
+        defaultWidth = SIDEBAR_DEFAULT_WIDTH,
+        minWidth = SIDEBAR_MIN_WIDTH,
+    } = widthProps;
+    const { sidebarRef, sidebarWidth, isResizing, startResizing } =
+        useSidebarResize({
+            defaultWidth,
+            minWidth,
+            position,
+            mainWidth,
+            onResizeStart,
+            onResizeEnd,
+        });
 
-const SidebarColumn = styled('div')`
-    height: 100%;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-`;
-
-const SidebarContent = styled('div')`
-    flex: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-`;
-
-interface SidebarProps {
-    title?: string | React.ReactNode;
-}
-
-export const SidebarDivider = styled(Divider)`
-    margin: 12px 0 18px 0;
-`;
-
-const Sidebar: FC<SidebarProps> = ({ title, children }) => (
-    <SidebarWrapper elevation={1}>
+    const transition: MantineTransition = {
+        in: {
+            opacity: 1,
+            ...(position === SidebarPosition.LEFT
+                ? { marginLeft: 0 }
+                : { marginRight: 0 }),
+        },
+        out: {
+            opacity: 0,
+            ...(position === SidebarPosition.LEFT
+                ? { marginLeft: -sidebarWidth }
+                : { marginRight: -sidebarWidth }),
+        },
+        transitionProperty: 'opacity, margin',
+    };
+    return (
         <TrackSection name={SectionName.SIDEBAR}>
-            <SidebarColumn>
-                <SidebarContent>
-                    {typeof title === 'string' ? <H3>{title}</H3> : title}
-                    {children}
-                </SidebarContent>
-                <AboutFooter minimal />
-            </SidebarColumn>
+            <Flex
+                ref={sidebarRef}
+                direction="column"
+                pos="relative"
+                h="100%"
+                mah="100%"
+                sx={{ zIndex: 1 }}
+                {...containerProps}
+            >
+                <Transition
+                    mounted={isOpen}
+                    duration={500}
+                    transition={transition}
+                >
+                    {(style) => (
+                        <>
+                            <Paper
+                                shadow="lg"
+                                p={noSidebarPadding ? undefined : 'lg'}
+                                pb={0}
+                                w={sidebarWidth}
+                                style={style}
+                                sx={{
+                                    display: 'flex',
+                                    flexGrow: 1,
+                                    flexDirection: 'column',
+                                    overflowY: 'auto',
+                                }}
+                            >
+                                {children}
+                            </Paper>
+
+                            <Box
+                                h="100%"
+                                w={SIDEBAR_RESIZE_HANDLE_WIDTH}
+                                pos="absolute"
+                                top={0}
+                                {...(position === SidebarPosition.LEFT
+                                    ? { right: -SIDEBAR_RESIZE_HANDLE_WIDTH }
+                                    : { left: -SIDEBAR_RESIZE_HANDLE_WIDTH })}
+                                onMouseDown={startResizing}
+                                sx={(theme) => ({
+                                    cursor: 'col-resize',
+                                    zIndex: getDefaultZIndex('app') + 1,
+                                    ...(isResizing
+                                        ? {
+                                              background:
+                                                  theme.fn.linearGradient(
+                                                      90,
+                                                      theme.colors.blue[3],
+                                                      'transparent',
+                                                  ),
+                                          }
+                                        : {
+                                              ...theme.fn.hover({
+                                                  background:
+                                                      theme.fn.linearGradient(
+                                                          90,
+                                                          theme.colors.blue[1],
+                                                          'transparent',
+                                                      ),
+                                              }),
+                                          }),
+                                })}
+                            />
+                        </>
+                    )}
+                </Transition>
+            </Flex>
         </TrackSection>
-    </SidebarWrapper>
-);
+    );
+};
 
 export default Sidebar;

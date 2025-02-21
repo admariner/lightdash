@@ -1,8 +1,13 @@
-import React, { FC, useState } from 'react';
+import { getItemId, getMetrics } from '@lightdash/common';
+import { Button, Tooltip } from '@mantine/core';
+import { IconDeviceFloppy } from '@tabler/icons-react';
+import { useMemo, useState, type FC } from 'react';
+import { useExplore } from '../../../hooks/useExplore';
 import { useAddVersionMutation } from '../../../hooks/useSavedQuery';
-import { useExplorerContext } from '../../../providers/ExplorerProvider';
+import useSearchParams from '../../../hooks/useSearchParams';
+import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
+import MantineIcon from '../../common/MantineIcon';
 import ChartCreateModal from '../../common/modal/ChartCreateModal';
-import { SaveButton } from './SaveChartButton.styles';
 
 const SaveChartButton: FC<{ isExplorer?: boolean }> = ({ isExplorer }) => {
     const unsavedChartVersion = useExplorerContext(
@@ -14,6 +19,7 @@ const SaveChartButton: FC<{ isExplorer?: boolean }> = ({ isExplorer }) => {
     const savedChart = useExplorerContext(
         (context) => context.state.savedChart,
     );
+    const spaceUuid = useSearchParams('fromSpace');
 
     const [isQueryModalOpen, setIsQueryModalOpen] = useState<boolean>(false);
 
@@ -26,26 +32,71 @@ const SaveChartButton: FC<{ isExplorer?: boolean }> = ({ isExplorer }) => {
             });
         }
     };
+    const { data: explore } = useExplore(unsavedChartVersion.tableName);
+    const foundCustomMetricWithDuplicateId = useMemo<boolean>(() => {
+        if (!explore || !unsavedChartVersion.metricQuery.additionalMetrics)
+            return false;
+        const metricIds = getMetrics(explore).map(getItemId);
+        return unsavedChartVersion.metricQuery.additionalMetrics.some(
+            (metric) => metricIds.includes(getItemId(metric)),
+        );
+    }, [explore, unsavedChartVersion.metricQuery.additionalMetrics]);
+
+    const isDisabled =
+        !unsavedChartVersion.tableName ||
+        !hasUnsavedChanges ||
+        foundCustomMetricWithDuplicateId;
+
+    const handleSaveChart = () => {
+        return savedChart
+            ? handleSavedQueryUpdate()
+            : setIsQueryModalOpen(true);
+    };
+
     return (
         <>
-            <SaveButton
-                $isLargeButton={isExplorer}
-                icon={isExplorer ? 'saved' : undefined}
-                intent={isExplorer ? 'none' : 'success'}
-                text={savedChart ? 'Save changes' : 'Save chart'}
-                disabled={!unsavedChartVersion.tableName || !hasUnsavedChanges}
-                onClick={
-                    savedChart
-                        ? handleSavedQueryUpdate
-                        : () => setIsQueryModalOpen(true)
+            <Tooltip
+                label={
+                    'A custom metric ID matches an existing table metric. Rename it to avoid conflicts.'
                 }
-            />
+                disabled={!foundCustomMetricWithDuplicateId}
+                withinPortal
+                multiline
+                position={'bottom'}
+                maw={300}
+            >
+                <Button
+                    disabled={isDisabled}
+                    variant={isExplorer ? 'default' : undefined}
+                    color={isExplorer ? 'blue' : 'green.7'}
+                    size="xs"
+                    loading={update.isLoading}
+                    leftIcon={
+                        isExplorer ? (
+                            <MantineIcon icon={IconDeviceFloppy} />
+                        ) : undefined
+                    }
+                    {...(isDisabled && {
+                        'data-disabled': true,
+                    })}
+                    sx={{
+                        '&[data-disabled="true"]': {
+                            pointerEvents: 'all',
+                        },
+                    }}
+                    onClick={handleSaveChart}
+                >
+                    {savedChart ? 'Save changes' : 'Save chart'}
+                </Button>
+            </Tooltip>
+
             {unsavedChartVersion && (
                 <ChartCreateModal
                     isOpen={isQueryModalOpen}
                     savedData={unsavedChartVersion}
                     onClose={() => setIsQueryModalOpen(false)}
                     onConfirm={() => setIsQueryModalOpen(false)}
+                    defaultSpaceUuid={spaceUuid ?? undefined}
                 />
             )}
         </>

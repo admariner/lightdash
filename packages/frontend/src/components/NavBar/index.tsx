@@ -1,101 +1,109 @@
-import { Alignment, Classes, NavbarGroup } from '@blueprintjs/core';
-import { ProjectType } from '@lightdash/common';
-import { memo } from 'react';
-import { useHistory } from 'react-router-dom';
-import useToaster from '../../hooks/toaster/useToaster';
-import { useActiveProjectUuid } from '../../hooks/useProject';
-import { setLastProject, useProjects } from '../../hooks/useProjects';
-import { useErrorLogs } from '../../providers/ErrorLogsProvider';
-import { ErrorLogsDrawer } from '../ErrorLogsDrawer';
-import NavLink from '../NavLink';
-import { ShowErrorsButton } from '../ShowErrorsButton';
-import BrowseMenu from './BrowseMenu';
-import ExploreMenu from './ExploreMenu';
-import GlobalSearch from './GlobalSearch';
-import HelpMenu from './HelpMenu';
+import { assertUnreachable, ProjectType } from '@lightdash/common';
 import {
-    Divider,
-    LogoContainer,
-    NavBarWrapper,
-    ProjectDropdown,
-} from './NavBar.styles';
-import SettingsMenu from './SettingsMenu';
-import UserMenu from './UserMenu';
+    Box,
+    getDefaultZIndex,
+    Header,
+    MantineProvider,
+    type MantineTheme,
+} from '@mantine/core';
+import { memo, useCallback } from 'react';
+import { useParams } from 'react-router';
+import useDashboardStorage from '../../hooks/dashboard/useDashboardStorage';
+import { useActiveProjectUuid } from '../../hooks/useActiveProject';
+import { useProjects } from '../../hooks/useProjects';
+import useFullscreen from '../../providers/Fullscreen/useFullscreen';
+import { BANNER_HEIGHT, NAVBAR_HEIGHT } from '../common/Page/constants';
+import { DashboardExplorerBanner } from './DashboardExplorerBanner';
+import { MainNavBarContent } from './MainNavBarContent';
+import { PreviewBanner } from './PreviewBanner';
+
+enum NavBarMode {
+    DEFAULT = 'default',
+    EDITING_DASHBOARD_CHART = 'editingDashboardChart',
+}
+
+const defaultNavbarStyles = {
+    alignItems: 'center',
+    boxShadow: 'lg',
+    justifyContent: 'flex-start',
+};
+
+const useNavBarMode = () => {
+    const { isEditingDashboardChart } = useDashboardStorage();
+
+    return {
+        navBarMode: isEditingDashboardChart
+            ? NavBarMode.EDITING_DASHBOARD_CHART
+            : NavBarMode.DEFAULT,
+    };
+};
 
 const NavBar = memo(() => {
-    const { errorLogs, setErrorLogsVisible } = useErrorLogs();
-    const { showToastSuccess } = useToaster();
-    const { isLoading, data: projects } = useProjects();
-    const activeProjectUuid = useActiveProjectUuid();
+    const { projectUuid } = useParams<{ projectUuid: string }>();
+    const { data: projects } = useProjects();
+    const { activeProjectUuid, isLoading: isLoadingActiveProject } =
+        useActiveProjectUuid({ refetchOnMount: true });
+    const { isFullscreen } = useFullscreen();
 
-    const history = useHistory();
+    const { navBarMode } = useNavBarMode();
 
-    const homeUrl = activeProjectUuid
-        ? `/projects/${activeProjectUuid}/home`
-        : '/';
+    const isCurrentProjectPreview = !!projects?.find(
+        (project) =>
+            project.projectUuid === activeProjectUuid &&
+            project.type === ProjectType.PREVIEW,
+    );
+
+    const getHeaderStyles = useCallback(
+        (theme: MantineTheme) => ({
+            ...defaultNavbarStyles,
+            ...(navBarMode === NavBarMode.EDITING_DASHBOARD_CHART && {
+                justifyContent: 'center',
+                borderBottom: 'none',
+                backgroundColor: theme.colors.blue['6'],
+                color: 'white',
+            }),
+        }),
+        [navBarMode],
+    );
+    const headerContainerHeight =
+        NAVBAR_HEIGHT + (isCurrentProjectPreview ? BANNER_HEIGHT : 0);
+
+    const renderNavBarContent = () => {
+        switch (navBarMode) {
+            case NavBarMode.EDITING_DASHBOARD_CHART:
+                return <DashboardExplorerBanner projectUuid={projectUuid} />;
+            case NavBarMode.DEFAULT:
+                return (
+                    <MainNavBarContent
+                        activeProjectUuid={activeProjectUuid}
+                        isLoadingActiveProject={isLoadingActiveProject}
+                    />
+                );
+            default:
+                assertUnreachable(
+                    navBarMode,
+                    `Unknown navBarMode ${navBarMode}`,
+                );
+        }
+    };
 
     return (
-        <>
-            <NavBarWrapper className={Classes.DARK}>
-                <NavbarGroup align={Alignment.LEFT}>
-                    <NavLink
-                        to={homeUrl}
-                        style={{ marginRight: 10, display: 'flex' }}
-                    >
-                        <LogoContainer title="Home" />
-                    </NavLink>
-                    {!!activeProjectUuid && (
-                        <>
-                            <ExploreMenu projectUuid={activeProjectUuid} />
-                            <BrowseMenu projectUuid={activeProjectUuid} />
-                            <GlobalSearch projectUuid={activeProjectUuid} />
-                        </>
-                    )}
-                </NavbarGroup>
-                <NavbarGroup align={Alignment.RIGHT}>
-                    <ShowErrorsButton
-                        errorLogs={errorLogs}
-                        setErrorLogsVisible={setErrorLogsVisible}
-                    />
-                    <SettingsMenu />
-                    <HelpMenu />
-                    <Divider />
-                    {activeProjectUuid && (
-                        <ProjectDropdown
-                            disabled={isLoading || (projects || []).length <= 0}
-                            options={projects?.map((item) => ({
-                                value: item.projectUuid,
-                                label: `${
-                                    item.type === ProjectType.PREVIEW
-                                        ? '[Preview] '
-                                        : ''
-                                }${item.name}`,
-                            }))}
-                            fill
-                            value={activeProjectUuid}
-                            onChange={(e) => {
-                                setLastProject(e.target.value);
-                                showToastSuccess({
-                                    icon: 'tick',
-                                    title: `You are now viewing ${
-                                        projects?.find(
-                                            ({ projectUuid }) =>
-                                                projectUuid === e.target.value,
-                                        )?.name
-                                    }`,
-                                });
-                                history.push(
-                                    `/projects/${e.target.value}/home`,
-                                );
-                            }}
-                        />
-                    )}
-                    <UserMenu />
-                </NavbarGroup>
-            </NavBarWrapper>
-
-            <ErrorLogsDrawer />
-        </>
+        <MantineProvider inherit theme={{ colorScheme: 'dark' }}>
+            {isCurrentProjectPreview && <PreviewBanner />}
+            {/* hack to make navbar fixed and maintain space */}
+            <Box h={!isFullscreen ? headerContainerHeight : 0} />
+            <Header
+                height={NAVBAR_HEIGHT}
+                fixed
+                mt={isCurrentProjectPreview ? BANNER_HEIGHT : 0}
+                display={isFullscreen ? 'none' : 'flex'}
+                px="md"
+                zIndex={getDefaultZIndex('app')}
+                styles={(theme) => ({ root: getHeaderStyles(theme) })}
+            >
+                {renderNavBarContent()}
+            </Header>
+        </MantineProvider>
     );
 });
 

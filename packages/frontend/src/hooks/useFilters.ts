@@ -1,15 +1,13 @@
 import {
     addFilterRule,
-    Field,
-    fieldId,
-    FilterableField,
+    getItemId,
     getTotalFilterRules,
+    type Field,
+    type FilterableField,
 } from '@lightdash/common';
 import { useCallback, useMemo } from 'react';
-import {
-    ExplorerSection,
-    useExplorerContext,
-} from '../providers/ExplorerProvider';
+import { ExplorerSection } from '../providers/Explorer/types';
+import useExplorerContext from '../providers/Explorer/useExplorerContext';
 
 export const useFilters = () => {
     const expandedSections = useExplorerContext(
@@ -34,7 +32,7 @@ export const useFilters = () => {
     const isFilteredField = useCallback(
         (field: Field): boolean =>
             !!allFilterRules.find(
-                (rule) => rule.target.fieldId === fieldId(field),
+                (rule) => rule.target.fieldId === getItemId(field),
             ),
         [allFilterRules],
     );

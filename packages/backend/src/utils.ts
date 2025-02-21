@@ -1,33 +1,21 @@
-import { ParameterError, validateEmail } from '@lightdash/common';
+import {
+    AnyType,
+    ParameterError,
+    SshKeyPair,
+    validateEmail,
+} from '@lightdash/common';
 import * as Sentry from '@sentry/node';
 import { CustomSamplingContext } from '@sentry/types';
+import { generateKeyPair } from 'crypto';
+import { parseKey } from 'sshpk';
 import { Worker } from 'worker_threads';
 import {
+    DBPinnedSpace,
     DbPinnedChart,
     DbPinnedDashboard,
     DbPinnedItem,
-    DBPinnedSpace,
 } from './database/entities/pinnedList';
-import Logger from './logger';
-
-export const sanitizeStringParam = (value: any) => {
-    if (!value || typeof value !== 'string') {
-        throw new ParameterError();
-    }
-    const trimmedValue = value.trim();
-    if (trimmedValue.length <= 0) {
-        throw new ParameterError();
-    }
-    return trimmedValue;
-};
-
-export const sanitizeEmailParam = (value: any) => {
-    const email = sanitizeStringParam(value);
-    if (!validateEmail(email)) {
-        throw new ParameterError();
-    }
-    return email;
-};
+import Logger from './logging/logger';
 
 export const isDbPinnedChart = (data: DbPinnedItem): data is DbPinnedChart =>
     'saved_chart_uuid' in data && !!data.saved_chart_uuid;
@@ -40,42 +28,46 @@ export const isDbPinnedDashboard = (
 export const isDbPinnedSpace = (data: DbPinnedItem): data is DBPinnedSpace =>
     'space_uuid' in data && !!data.space_uuid;
 
-export const wrapSentryTransaction = async <T>(
+export const wrapSentryTransaction = <T>(
     name: string,
     context: CustomSamplingContext,
-    funct: () => Promise<T>,
+    funct: (span: Sentry.Span) => Promise<T>,
 ): Promise<T> => {
     const startTime = Date.now();
-    const transaction = Sentry.getCurrentHub()?.getScope()?.getTransaction();
 
-    Logger.debug(
-        `Starting sentry transaction ${
-            transaction?.spanId
-        } "${name}" with context: ${JSON.stringify(context)}`,
-    );
-
-    const span =
-        transaction &&
-        transaction.startChild({
+    return Sentry.startSpanManual<Promise<T>>(
+        {
             op: name,
-            data: context,
-        });
-    try {
-        return await funct();
-    } catch (error) {
-        Logger.error(
-            `Error in wrapped sentry transaction ${transaction?.spanId} "${name}": ${error}`,
-        );
-        Sentry.captureException(error);
-        throw error;
-    } finally {
-        Logger.debug(
-            `End sentry transaction ${transaction?.spanId} "${name}", took: ${
-                Date.now() - startTime
-            }ms`,
-        );
-        if (span) span.finish();
-    }
+            name,
+            attributes: context,
+        },
+        async (span, end) => {
+            Logger.debug(
+                `Starting sentry transaction ${
+                    span?.spanContext().spanId
+                } "${name}" with context: ${JSON.stringify(context)}`,
+            );
+
+            try {
+                return await funct(span);
+            } catch (error) {
+                Logger.error(
+                    `Error in wrapped sentry transaction ${
+                        span?.spanContext().spanId
+                    } "${name}": ${error}`,
+                );
+                Sentry.captureException(error);
+                throw error;
+            } finally {
+                Logger.debug(
+                    `End sentry transaction ${
+                        span?.spanContext().spanId
+                    } "${name}", took: ${Date.now() - startTime}ms`,
+                );
+                end();
+            }
+        },
+    );
 };
 
 export function runWorkerThread<T>(worker: Worker): Promise<T> {
@@ -90,3 +82,34 @@ export function runWorkerThread<T>(worker: Worker): Promise<T> {
         });
     });
 }
+
+export const generateOpenSshKeyPair = async (): Promise<SshKeyPair> =>
+    new Promise<SshKeyPair>((resolve, reject) => {
+        generateKeyPair(
+            'rsa',
+            {
+                modulusLength: 4096,
+                publicKeyEncoding: {
+                    type: 'pkcs1',
+                    format: 'pem',
+                },
+                privateKeyEncoding: {
+                    type: 'pkcs1',
+                    format: 'pem',
+                },
+            },
+            (err, publicKey, privateKey) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    const parsedPublicKey = parseKey(publicKey, 'pem');
+                    parsedPublicKey.comment = `(generated_by_lightdash_at_${new Date().toISOString()})`;
+                    const openSshPublicKey = parsedPublicKey.toString('ssh');
+                    resolve({
+                        publicKey: openSshPublicKey,
+                        privateKey,
+                    });
+                }
+            },
+        );
+    });

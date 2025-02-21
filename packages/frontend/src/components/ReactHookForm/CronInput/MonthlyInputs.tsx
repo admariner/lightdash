@@ -1,10 +1,8 @@
-import { Classes, FormGroup } from '@blueprintjs/core';
-import { TimePicker } from '@blueprintjs/datetime';
-import React, { FC } from 'react';
-import { DaysInput, InlinedInputs, InlinedLabel } from './CronInput.styles';
+import { Group, Input, NumberInput } from '@mantine/core';
+import React, { type FC } from 'react';
+import TimePicker from './TimePicker';
 import {
     getMonthlyCronExpression,
-    getTimePickerValue,
     parseCronExpression,
 } from './cronInputUtils';
 
@@ -21,33 +19,28 @@ const MonthlyInputs: FC<{
         }
     };
 
-    const onTimeChange = (date: Date) => {
-        onChange(
-            getMonthlyCronExpression(date.getMinutes(), date.getHours(), day),
-        );
+    const onTimeChange = (newTime: { minutes: number; hours: number }) => {
+        onChange(getMonthlyCronExpression(newTime.minutes, newTime.hours, day));
     };
 
     return (
-        <InlinedInputs>
-            <FormGroup inline label={'on day'} disabled={disabled}>
-                <DaysInput
-                    value={day}
-                    onValueChange={onDayChange}
-                    disabled={disabled}
-                    min={1}
-                    max={31}
-                />
-            </FormGroup>
-            <FormGroup inline label={'at'} disabled={disabled}>
-                <TimePicker
-                    useAmPm
-                    disabled={disabled}
-                    value={getTimePickerValue(hours, minutes)}
-                    onChange={onTimeChange}
-                />
-            </FormGroup>
-            <InlinedLabel className={Classes.LABEL}>UTC</InlinedLabel>
-        </InlinedInputs>
+        <Group spacing="sm">
+            <Input.Label>on day</Input.Label>
+            <NumberInput
+                value={day}
+                onChange={onDayChange}
+                disabled={disabled}
+                w="6xl"
+                min={1}
+                max={31}
+            />
+            <Input.Label>at</Input.Label>
+            <TimePicker
+                disabled={disabled}
+                cronExpression={cronExpression}
+                onChange={onTimeChange}
+            />
+        </Group>
     );
 };
 export default MonthlyInputs;

@@ -1,5 +1,9 @@
-import { ApiError, CompleteUserArgs, LightdashUser } from '@lightdash/common';
-import { useMutation, useQueryClient } from 'react-query';
+import {
+    type ApiError,
+    type CompleteUserArgs,
+    type LightdashUser,
+} from '@lightdash/common';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { lightdashApi } from '../../api';
 
 const completeUserQuery = async (data: CompleteUserArgs) =>
@@ -16,8 +20,8 @@ export const useUserCompleteMutation = () => {
         {
             mutationKey: ['user_complete'],
             onSuccess: async () => {
-                await queryClient.invalidateQueries('user');
-                await queryClient.invalidateQueries('organisation');
+                await queryClient.invalidateQueries(['user']);
+                await queryClient.invalidateQueries(['organization']);
             },
         },
     );

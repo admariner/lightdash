@@ -10,29 +10,8 @@ import {
     isAuthenticated,
     unauthorisedInDemo,
 } from '../controllers/authentication';
-import {
-    organizationService,
-    projectService,
-    userService,
-} from '../services/services';
 
 export const organizationRouter = express.Router();
-
-organizationRouter.get(
-    '/projects',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) =>
-        organizationService
-            .getProjects(req.user!)
-            .then((results) => {
-                res.json({
-                    status: 'ok',
-                    results,
-                });
-            })
-            .catch(next),
-);
 
 organizationRouter.post(
     '/projects/precompiled',
@@ -40,8 +19,9 @@ organizationRouter.post(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) =>
-        projectService
-            .create(
+        req.services
+            .getProjectService()
+            .scheduleCreate(
                 req.user!,
                 req.body,
                 getRequestMethod(req.header(LightdashRequestMethodHeader)),
@@ -61,7 +41,8 @@ organizationRouter.post(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) =>
-        projectService
+        req.services
+            .getProjectService()
             .createWithoutCompile(
                 req.user!,
                 req.body,
@@ -82,7 +63,8 @@ organizationRouter.delete(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) =>
-        projectService
+        req.services
+            .getProjectService()
             .delete(req.params.projectUuid, req.user!)
             .then((results) => {
                 res.json({
@@ -98,9 +80,9 @@ organizationRouter.get(
     isAuthenticated,
     async (req, res, next) => {
         try {
-            const onboarding = await organizationService.getOnboarding(
-                req.user!,
-            );
+            const onboarding = await req.services
+                .getOrganizationService()
+                .getOnboarding(req.user!);
             const results: OnboardingStatus = {
                 ranQuery: !!onboarding.ranQueryAt,
             };
@@ -119,7 +101,9 @@ organizationRouter.post(
     isAuthenticated,
     async (req, res, next) => {
         try {
-            await organizationService.setOnboardingSuccessDate(req.user!);
+            await req.services
+                .getOrganizationService()
+                .setOnboardingSuccessDate(req.user!);
             res.json({
                 status: 'ok',
                 results: undefined,

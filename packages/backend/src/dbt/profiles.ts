@@ -1,4 +1,5 @@
 import {
+    AnyType,
     assertUnreachable,
     CreateWarehouseCredentials,
     WarehouseTypes,
@@ -14,7 +15,7 @@ const envVar = (v: string) => `LIGHTDASH_DBT_PROFILE_VAR_${v.toUpperCase()}`;
 const envVarReference = (v: string) => `{{ env_var('${envVar(v)}') }}`;
 
 type CredentialsTarget = {
-    target: Record<string, any>;
+    target: Record<string, AnyType>;
     environment: Record<string, string>;
     files?: Record<string, string>;
 };
@@ -41,6 +42,7 @@ const credentialsTarget = (
                             envVarReference(key),
                         ]),
                     ),
+                    execution_project: credentials.executionProject,
                 },
                 environment: Object.fromEntries(
                     Object.entries(credentials.keyfileContents).map(
@@ -61,9 +63,8 @@ const credentialsTarget = (
                     threads: DEFAULT_THREADS,
                     keepalives_idle: credentials.keepalivesIdle,
                     sslmode: credentials.sslmode,
-                    sslrootcert: path.resolve(
-                        __dirname,
-                        '../services/warehouseClients/amazon-trust-ca-bundle.crt',
+                    sslrootcert: require.resolve(
+                        '@lightdash/warehouses/dist/warehouseClients/ca-bundle-aws-redshift.crt',
                     ),
                     ra3_node: credentials.ra3Node || true,
                 },
@@ -87,6 +88,13 @@ const credentialsTarget = (
                     search_path: credentials.searchPath,
                     role: credentials.role,
                     sslmode: credentials.sslmode,
+                    ...(credentials.host.endsWith('.rds.amazonaws.com')
+                        ? {
+                              sslrootcert: require.resolve(
+                                  '@lightdash/warehouses/dist/warehouseClients/ca-bundle-aws-rds-global.pem',
+                              ),
+                          }
+                        : {}),
                 },
                 environment: {
                     [envVar('user')]: credentials.user,
@@ -188,10 +196,6 @@ export const profileFromCredentials = (
     );
 
     const profile = yaml.dump({
-        config: {
-            partial_parse: false,
-            send_anonymous_usage_stats: false,
-        },
         [LIGHTDASH_PROFILE_NAME]: {
             target: targetName,
             outputs: {

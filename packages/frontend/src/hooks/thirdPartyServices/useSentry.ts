@@ -1,6 +1,11 @@
-import { HealthState, LightdashUser } from '@lightdash/common';
-import * as Sentry from '@sentry/react';
-import { Integrations } from '@sentry/tracing';
+import { type HealthState, type LightdashUser } from '@lightdash/common';
+import {
+    browserTracingIntegration,
+    init,
+    replayIntegration,
+    setTag,
+    setUser,
+} from '@sentry/react';
 import { useEffect, useState } from 'react';
 
 const useSentry = (
@@ -10,31 +15,33 @@ const useSentry = (
     const [isSentryLoaded, setIsSentryLoaded] = useState(false);
 
     useEffect(() => {
-        if (sentryConfig && !isSentryLoaded && sentryConfig.dsn) {
-            Sentry.init({
-                dsn: sentryConfig.dsn,
+        if (sentryConfig && !isSentryLoaded && sentryConfig.frontend.dsn) {
+            init({
+                dsn: sentryConfig.frontend.dsn,
                 release: sentryConfig.release,
                 environment: sentryConfig.environment,
                 integrations: [
-                    new Integrations.BrowserTracing(),
-                    new Sentry.Replay({
-                        maskAllText: false,
-                        blockAllMedia: true,
-                    }),
+                    browserTracingIntegration(),
+                    replayIntegration(),
                 ],
-                tracesSampleRate: 0.2,
+                tracesSampler(samplingContext) {
+                    if (samplingContext.parentSampled !== undefined) {
+                        return samplingContext.parentSampled;
+                    }
+
+                    return sentryConfig.tracesSampleRate;
+                },
                 replaysOnErrorSampleRate: 1.0,
-                replaysSessionSampleRate: 0.0,
             });
             setIsSentryLoaded(true);
         }
         if (user) {
-            Sentry.setUser({
+            setUser({
                 id: user.userUuid,
                 email: user.email,
                 username: user.email,
-                segment: user.organizationUuid,
             });
+            setTag('organization', user.organizationUuid);
         }
     }, [isSentryLoaded, setIsSentryLoaded, sentryConfig, user]);
 };

@@ -1,16 +1,29 @@
-import { defineUserAbility, ForbiddenError } from '@lightdash/common';
-import { analytics } from '../../analytics/client';
+import { Ability } from '@casl/ability';
 import {
-    analyticsModel,
-    dashboardModel,
-    pinnedListModel,
-    schedulerModel,
-    spaceModel,
-} from '../../models/models';
+    defineUserAbility,
+    ForbiddenError,
+    OrganizationMemberRole,
+    PossibleAbilities,
+    ProjectMemberRole,
+    SessionUser,
+} from '@lightdash/common';
 
+import { analyticsMock } from '../../analytics/LightdashAnalytics.mock';
+import { SlackClient } from '../../clients/Slack/SlackClient';
+import { AnalyticsModel } from '../../models/AnalyticsModel';
+import type { CatalogModel } from '../../models/CatalogModel/CatalogModel';
+import { DashboardModel } from '../../models/DashboardModel/DashboardModel';
+import { PinnedListModel } from '../../models/PinnedListModel';
+import type { ProjectModel } from '../../models/ProjectModel/ProjectModel';
+import { SavedChartModel } from '../../models/SavedChartModel';
+import { SchedulerModel } from '../../models/SchedulerModel';
+import { SpaceModel } from '../../models/SpaceModel';
+import { SchedulerClient } from '../../scheduler/SchedulerClient';
 import { DashboardService } from './DashboardService';
 import {
+    chart,
     createDashboard,
+    createDashboardWithSlug,
     createDashboardWithTileIds,
     dashboard,
     dashboardsDetails,
@@ -24,53 +37,56 @@ import {
     user,
 } from './DashboardService.mock';
 
-jest.mock('../../analytics/client', () => ({
-    analytics: {
-        track: jest.fn(),
-    },
-}));
+const dashboardModel = {
+    getAllByProject: jest.fn(async () => dashboardsDetails),
 
-jest.mock('../../database/database', () => ({}));
-jest.mock('../../clients/clients', () => ({}));
+    getById: jest.fn(async () => dashboard),
 
-jest.mock('../../database/entities/spaces', () => ({
-    getSpace: jest.fn(async () => space),
-}));
+    create: jest.fn(async () => dashboard),
 
-jest.mock('../../models/models', () => ({
-    dashboardModel: {
-        getAllByProject: jest.fn(async () => dashboardsDetails),
+    update: jest.fn(async () => dashboard),
 
-        getById: jest.fn(async () => dashboard),
+    delete: jest.fn(async () => dashboard),
 
-        create: jest.fn(async () => dashboard),
+    addVersion: jest.fn(async () => dashboard),
 
-        update: jest.fn(async () => dashboard),
+    getOrphanedCharts: jest.fn(async () => []),
+};
 
-        delete: jest.fn(async () => dashboard),
+const spaceModel = {
+    getFullSpace: jest.fn(async () => publicSpace),
+    getSpaceSummary: jest.fn(async () => publicSpace),
+    getFirstAccessibleSpace: jest.fn(async () => space),
+    getUserSpaceAccess: jest.fn(async () => []),
+    getUserSpacesAccess: jest.fn(async () => ({})),
+};
+const analyticsModel = {
+    addDashboardViewEvent: jest.fn(async () => null),
+};
+const savedChartModel = {
+    get: jest.fn(async () => chart),
+    delete: jest.fn(async () => ({
+        uuid: 'chart_uuid',
+        projectUuid: 'project_uuid',
+    })),
+};
 
-        addVersion: jest.fn(async () => dashboard),
-    },
-
-    spaceModel: {
-        getFullSpace: jest.fn(async () => publicSpace),
-    },
-    analyticsModel: {
-        addDashboardViewEvent: jest.fn(async () => null),
-    },
-    pinnedListModel: {},
-    schedulerModel: {},
-}));
-
+jest.spyOn(analyticsMock, 'track');
 describe('DashboardService', () => {
     const projectUuid = 'projectUuid';
     const { uuid: dashboardUuid } = dashboard;
     const service = new DashboardService({
-        dashboardModel,
-        spaceModel,
-        analyticsModel,
-        pinnedListModel,
-        schedulerModel,
+        analytics: analyticsMock,
+        dashboardModel: dashboardModel as unknown as DashboardModel,
+        spaceModel: spaceModel as unknown as SpaceModel,
+        analyticsModel: analyticsModel as unknown as AnalyticsModel,
+        pinnedListModel: {} as PinnedListModel,
+        schedulerModel: {} as SchedulerModel,
+        savedChartModel: savedChartModel as unknown as SavedChartModel,
+        projectModel: {} as ProjectModel,
+        slackClient: {} as SlackClient,
+        schedulerClient: {} as SchedulerClient,
+        catalogModel: {} as CatalogModel,
     });
     afterEach(() => {
         jest.clearAllMocks();
@@ -99,15 +115,16 @@ describe('DashboardService', () => {
     test('should create dashboard', async () => {
         const result = await service.create(user, projectUuid, createDashboard);
 
-        expect(result).toEqual(dashboard);
+        expect(result).toEqual({ ...dashboard, isPrivate: space.is_private });
         expect(dashboardModel.create).toHaveBeenCalledTimes(1);
         expect(dashboardModel.create).toHaveBeenCalledWith(
             space.space_uuid,
-            createDashboard,
+            createDashboardWithSlug,
             user,
+            projectUuid,
         );
-        expect(analytics.track).toHaveBeenCalledTimes(1);
-        expect(analytics.track).toHaveBeenCalledWith(
+        expect(analyticsMock.track).toHaveBeenCalledTimes(1);
+        expect(analyticsMock.track).toHaveBeenCalledWith(
             expect.objectContaining({
                 event: 'dashboard.created',
             }),
@@ -120,15 +137,16 @@ describe('DashboardService', () => {
             createDashboardWithTileIds,
         );
 
-        expect(result).toEqual(dashboard);
+        expect(result).toEqual({ ...dashboard, isPrivate: space.is_private });
         expect(dashboardModel.create).toHaveBeenCalledTimes(1);
         expect(dashboardModel.create).toHaveBeenCalledWith(
             space.space_uuid,
             createDashboardWithTileIds,
             user,
+            projectUuid,
         );
-        expect(analytics.track).toHaveBeenCalledTimes(1);
-        expect(analytics.track).toHaveBeenCalledWith(
+        expect(analyticsMock.track).toHaveBeenCalledTimes(1);
+        expect(analyticsMock.track).toHaveBeenCalledWith(
             expect.objectContaining({
                 event: 'dashboard.created',
             }),
@@ -147,8 +165,8 @@ describe('DashboardService', () => {
             dashboardUuid,
             updateDashboard,
         );
-        expect(analytics.track).toHaveBeenCalledTimes(1);
-        expect(analytics.track).toHaveBeenCalledWith(
+        expect(analyticsMock.track).toHaveBeenCalledTimes(1);
+        expect(analyticsMock.track).toHaveBeenCalledWith(
             expect.objectContaining({
                 event: 'dashboard.updated',
             }),
@@ -167,9 +185,10 @@ describe('DashboardService', () => {
             dashboardUuid,
             updateDashboardTiles,
             user,
+            projectUuid,
         );
-        expect(analytics.track).toHaveBeenCalledTimes(1);
-        expect(analytics.track).toHaveBeenCalledWith(
+        expect(analyticsMock.track).toHaveBeenCalledTimes(1);
+        expect(analyticsMock.track).toHaveBeenCalledWith(
             expect.objectContaining({
                 event: 'dashboard_version.created',
             }),
@@ -188,9 +207,10 @@ describe('DashboardService', () => {
             dashboardUuid,
             updateDashboardTilesWithIds,
             user,
+            projectUuid,
         );
-        expect(analytics.track).toHaveBeenCalledTimes(1);
-        expect(analytics.track).toHaveBeenCalledWith(
+        expect(analyticsMock.track).toHaveBeenCalledTimes(1);
+        expect(analyticsMock.track).toHaveBeenCalledWith(
             expect.objectContaining({
                 event: 'dashboard_version.created',
             }),
@@ -214,18 +234,34 @@ describe('DashboardService', () => {
             dashboardUuid,
             updateDashboardTiles,
             user,
+            projectUuid,
         );
-        expect(analytics.track).toHaveBeenCalledTimes(2);
-        expect(analytics.track).toHaveBeenNthCalledWith(
+        expect(analyticsMock.track).toHaveBeenCalledTimes(2);
+        expect(analyticsMock.track).toHaveBeenNthCalledWith(
             1,
             expect.objectContaining({
                 event: 'dashboard.updated',
             }),
         );
-        expect(analytics.track).toHaveBeenNthCalledWith(
+        expect(analyticsMock.track).toHaveBeenNthCalledWith(
             2,
             expect.objectContaining({
                 event: 'dashboard_version.created',
+            }),
+        );
+    });
+    test('should delete orphan charts when updating dashboard version', async () => {
+        (dashboardModel.getOrphanedCharts as jest.Mock).mockImplementationOnce(
+            async () => [{ uuid: 'chart_uuid' }],
+        );
+
+        await service.update(user, dashboardUuid, updateDashboardTiles);
+
+        expect(savedChartModel.delete).toHaveBeenCalledTimes(1);
+        expect(analyticsMock.track).toHaveBeenCalledTimes(2);
+        expect(analyticsMock.track).toHaveBeenCalledWith(
+            expect.objectContaining({
+                event: 'saved_chart.deleted',
             }),
         );
     });
@@ -234,8 +270,8 @@ describe('DashboardService', () => {
 
         expect(dashboardModel.delete).toHaveBeenCalledTimes(1);
         expect(dashboardModel.delete).toHaveBeenCalledWith(dashboardUuid);
-        expect(analytics.track).toHaveBeenCalledTimes(1);
-        expect(analytics.track).toHaveBeenCalledWith(
+        expect(analyticsMock.track).toHaveBeenCalledTimes(1);
+        expect(analyticsMock.track).toHaveBeenCalledWith(
             expect.objectContaining({
                 event: 'dashboard.deleted',
             }),
@@ -256,7 +292,7 @@ describe('DashboardService', () => {
             service.getById(anotherUser, dashboard.uuid),
         ).rejects.toThrowError(ForbiddenError);
     });
-    test('should not see empty list if getting all dashboard by project uuid from another organization', async () => {
+    test('should see empty list if getting all dashboard by project uuid from another organization', async () => {
         const anotherUser = {
             ...user,
             ability: defineUserAbility(
@@ -281,22 +317,60 @@ describe('DashboardService', () => {
         );
     });
 
-    test('should not see dashboard from private space', async () => {
-        (spaceModel.getFullSpace as jest.Mock).mockImplementationOnce(
+    test('should not see dashboard from private space if you are not admin', async () => {
+        (spaceModel.getSpaceSummary as jest.Mock).mockImplementationOnce(
             async () => privateSpace,
         );
 
+        const userViewer = {
+            ...user,
+            ability: defineUserAbility(
+                {
+                    ...user,
+                    organizationUuid: 'another-org-uuid',
+                },
+                [
+                    {
+                        projectUuid,
+                        role: ProjectMemberRole.VIEWER,
+                        userUuid: user.userUuid,
+                    },
+                ],
+            ),
+        };
         await expect(
-            service.getById(user, dashboard.uuid),
+            service.getById(userViewer, dashboard.uuid),
         ).rejects.toThrowError(ForbiddenError);
     });
-
-    test('should not see dashboards from private space', async () => {
+    test('should see dashboard from private space if you are admin', async () => {
         (spaceModel.getFullSpace as jest.Mock).mockImplementationOnce(
             async () => privateSpace,
         );
+
+        const result = await service.getById(user, dashboard.uuid);
+
+        expect(result).toEqual(dashboard);
+        expect(dashboardModel.getById).toHaveBeenCalledTimes(1);
+        expect(dashboardModel.getById).toHaveBeenCalledWith(dashboard.uuid);
+    });
+
+    test('should not see dashboards from private space if you are not an admin', async () => {
+        (spaceModel.getSpaceSummary as jest.Mock).mockImplementationOnce(
+            async () => privateSpace,
+        );
+
+        const editorUser: SessionUser = {
+            ...user,
+            role: OrganizationMemberRole.EDITOR,
+            ability: new Ability<PossibleAbilities>([
+                {
+                    subject: 'Dashboard',
+                    action: ['view', 'update', 'delete', 'create'],
+                },
+            ]),
+        };
         const result = await service.getAllByProject(
-            user,
+            editorUser,
             projectUuid,
             undefined,
         );

@@ -1,14 +1,16 @@
-import { ForbiddenError } from '@lightdash/common';
+import {
+    AnyType,
+    ForbiddenError,
+    getErrorMessage,
+    getObjectValue,
+} from '@lightdash/common';
+import { sign } from 'cookie-signature';
 import { createHmac } from 'crypto';
 import express from 'express';
+import playwright from 'playwright';
 import { lightdashConfig } from '../config/lightdashConfig';
-import { userModel } from '../models/models';
-import { EncryptionService } from '../services/EncryptionService/EncryptionService';
-
-const puppeteer = require('puppeteer');
 
 export const headlessBrowserRouter = express.Router({ mergeParams: true });
-export const encryptionService = new EncryptionService({ lightdashConfig });
 
 export const getAuthenticationToken = (value: string) =>
     createHmac('sha512', lightdashConfig.lightdashSecret)
@@ -17,21 +19,54 @@ export const getAuthenticationToken = (value: string) =>
 
 headlessBrowserRouter.post('/login/:userUuid', async (req, res, next) => {
     try {
-        const { userUuid } = req.params;
+        const userUuid = getObjectValue(req.params, 'userUuid');
         const hash = getAuthenticationToken(userUuid);
 
         if (hash !== req.body.token) {
             throw new ForbiddenError();
         }
-        const sessionUser = await userModel.findSessionUserByUUID(userUuid);
+
+        const sessionUser = await req.services
+            .getUserService()
+            .getSessionByUserUuid(userUuid);
 
         req.login(sessionUser, (err) => {
             if (err) {
                 next(err);
             }
+
+            const internalHost = new URL(
+                lightdashConfig.headlessBrowser.internalLightdashHost,
+            );
+
+            /**
+             * We need to set a secure cookie if:
+             * - secure cookies are enabled
+             * - the internal host is http (can't set session cookie because of policies set in App.ts)
+             *
+             * This is because 'express-session' middleware does not allow us to set multiple domain's cookie sessions
+             */
+            const shouldSetSecureCookie =
+                lightdashConfig.secureCookies === true &&
+                internalHost.protocol === 'http:' &&
+                lightdashConfig.siteUrl !==
+                    lightdashConfig.headlessBrowser.internalLightdashHost;
+
+            if (shouldSetSecureCookie) {
+                const value = `s:${sign(
+                    req.session.id,
+                    lightdashConfig.lightdashSecret,
+                )}`;
+
+                res.setHeader('Set-Cookie', [
+                    `connect.sid=${value}; Path=/; HttpOnly; SameSite=Lax; Domain=${internalHost.host}; Secure`,
+                ]);
+            }
             res.json({
                 status: 'ok',
-                results: sessionUser,
+                results: {
+                    userUuid: sessionUser.userUuid,
+                },
             });
         });
     } catch (e) {
@@ -63,22 +98,19 @@ if (
         try {
             const browserWSEndpoint = `ws://${process.env.HEADLESS_BROWSER_HOST}:${process.env.HEADLESS_BROWSER_PORT}`;
             console.debug(`Headless chrome endpoint: ${browserWSEndpoint}`);
-            browser = await puppeteer.connect({
+            browser = await playwright.chromium.connectOverCDP(
                 browserWSEndpoint,
-            });
+            );
 
             const page = await browser.newPage();
-            const hostname =
-                process.env.NODE_ENV === 'development'
-                    ? 'lightdash-dev'
-                    : process.env.RENDER_SERVICE_NAME;
 
-            const testUrl = `http://${hostname}:${
-                process.env.PORT || 3000
-            }/api/v1/headless-browser/callback/${req.params.flag}`;
+            const testUrl = `${lightdashConfig.siteUrl}/api/v1/headless-browser/callback/${req.params.flag}`;
             console.debug(`Fetching headless chrome URL: ${testUrl}`);
 
             const response = await page.goto(testUrl, {});
+            if (!response) {
+                throw new Error('No response');
+            }
             const result = await response.json();
 
             res.json({
@@ -91,7 +123,7 @@ if (
             });
         } catch (e) {
             console.error(e);
-            next(e.message);
+            next(getErrorMessage(e));
         } finally {
             if (browser) await browser.close();
         }
@@ -111,16 +143,16 @@ if (
         try {
             const browserWSEndpoint = `ws://${process.env.HEADLESS_BROWSER_HOST}:${process.env.HEADLESS_BROWSER_PORT}`;
             console.debug(`Headless chrome endpoint: ${browserWSEndpoint}`);
-            browser = await puppeteer.connect({
+            browser = await playwright.chromium.connectOverCDP(
                 browserWSEndpoint,
-            });
+            );
 
             const page = await browser.newPage();
             await page.setExtraHTTPHeaders({
                 cookie: req.headers.cookie || '',
             });
 
-            await page.setViewport({
+            await page.setViewportSize({
                 width: 1400,
                 height: 768, // hardcoded
             });
@@ -129,11 +161,9 @@ if (
                 'headwayapp.co',
                 'rudderlabs.com',
                 'analytics.lightdash.com',
-                'cohere.so',
                 'intercom.io',
             ];
-            await page.setRequestInterception(true);
-            page.on('request', (request: any) => {
+            page.on('request', (request: AnyType) => {
                 const requestUrl = request.url();
                 if (blockedUrls.includes(requestUrl)) {
                     request.abort();
@@ -144,7 +174,6 @@ if (
             });
             await page.goto(url, {
                 timeout: 100000,
-                waitUntil: 'networkidle0',
             });
 
             const selector = isDashboard
@@ -153,11 +182,24 @@ if (
             await page.waitForSelector(selector);
             const element = await page.$(selector);
             if (isDashboard) {
-                await page.evaluate((sel: any) => {
+                await page.evaluate((sel: AnyType) => {
                     // @ts-ignore
                     const elements = document.querySelectorAll(sel);
                     elements.forEach((el) => el.parentNode.removeChild(el));
                 }, '.bp4-navbar');
+            }
+
+            if (lightdashConfig.scheduler.screenshotTimeout) {
+                await new Promise((resolve) => {
+                    setTimeout(
+                        resolve,
+                        lightdashConfig.scheduler.screenshotTimeout,
+                    );
+                });
+            }
+
+            if (!element) {
+                throw new Error('Element not found');
             }
             const imageBuffer = await element.screenshot({
                 path: '/tmp/test-screenshot.png',
@@ -170,7 +212,7 @@ if (
             res.end(imageBuffer);
         } catch (e) {
             console.error(e);
-            next(e.message);
+            next(getErrorMessage(e));
         } finally {
             if (browser) await browser.close();
         }

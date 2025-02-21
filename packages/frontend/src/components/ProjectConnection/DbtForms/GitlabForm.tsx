@@ -1,35 +1,37 @@
 import { DbtProjectType } from '@lightdash/common';
-import React, { FC } from 'react';
+import { Anchor, PasswordInput, TextInput } from '@mantine/core';
+import { type FC } from 'react';
+import { useFormContext } from 'react-hook-form';
 import {
     hasNoWhiteSpaces,
     isGitRepository,
     startWithSlash,
 } from '../../../utils/fieldValidators';
-import Input from '../../ReactHookForm/Input';
-import PasswordInput from '../../ReactHookForm/PasswordInput';
-import { useProjectFormContext } from '../ProjectFormProvider';
+import { useProjectFormContext } from '../useProjectFormContext';
+import DbtVersionSelect from '../WarehouseForms/Inputs/DbtVersion';
 
 const GitlabForm: FC<{ disabled: boolean }> = ({ disabled }) => {
     const { savedProject } = useProjectFormContext();
     const requireSecrets: boolean =
         savedProject?.dbtConnection.type !== DbtProjectType.GITLAB;
+    const { register } = useFormContext();
     return (
         <>
             <PasswordInput
-                name="dbt.personal_access_token"
+                {...register('dbt.personal_access_token')}
                 label="Personal access token"
-                labelHelp={
+                description={
                     <>
                         <p>
                             This is used to access your repo. See the{' '}
-                            <a
+                            <Anchor
                                 target="_blank"
                                 href="https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html"
                                 rel="noreferrer"
                             >
                                 instructions for creating a personal access
                                 token here
-                            </a>
+                            </Anchor>
                             .
                         </p>
                         <p>
@@ -38,37 +40,35 @@ const GitlabForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: requireSecrets ? 'Required field' : undefined,
-                }}
+                required={requireSecrets}
                 placeholder={
                     disabled || !requireSecrets ? '**************' : undefined
                 }
                 disabled={disabled}
             />
-            <Input
-                name="dbt.repository"
+            <TextInput
                 label="Repository"
-                labelHelp={
+                description={
                     <p>
                         This should be in the format <b>my-org/my-repo</b>. e.g.{' '}
                         <b>lightdash/lightdash-analytics</b>
                     </p>
                 }
-                rules={{
-                    required: 'Required field',
+                required
+                {...register('dbt.repository', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Repository'),
                         isGitRepository: isGitRepository('Repository'),
                     },
-                }}
+                })}
                 disabled={disabled}
                 placeholder="org/project"
             />
-            <Input
-                name="dbt.branch"
+            <DbtVersionSelect disabled={disabled} />
+
+            <TextInput
                 label="Branch"
-                labelHelp={
+                description={
                     <>
                         <p>
                             This is the branch in your Gitlab repo that
@@ -81,19 +81,18 @@ const GitlabForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: 'Required field',
+                required
+                {...register('dbt.branch', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Branch'),
                     },
-                }}
+                })}
                 disabled={disabled}
                 defaultValue="main"
             />
-            <Input
-                name="dbt.project_sub_path"
+            <TextInput
                 label="Project directory path"
-                labelHelp={
+                description={
                     <>
                         <p>
                             This is the folder where your <b>dbt_project.yml</b>{' '}
@@ -120,8 +119,8 @@ const GitlabForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: 'Required field',
+                required
+                {...register('dbt.project_sub_path', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces(
                             'Project directory path',
@@ -130,36 +129,35 @@ const GitlabForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                             'Project directory path',
                         ),
                     },
-                }}
+                })}
                 disabled={disabled}
                 defaultValue="/"
             />
-            <Input
-                name="dbt.host_domain"
+            <TextInput
                 label="Host domain (for self-hosted instances)"
-                labelHelp={
+                description={
                     <p>
                         If you’ve customized the domain for your GitLab pages,
                         you can add the custom domain for your project in here.
                         By default, this is
-                        <a
+                        <Anchor
                             href="http://gitlab.io/"
                             target="_blank"
                             rel="noreferrer"
                         >
                             {' '}
                             gitlab.io
-                        </a>
+                        </Anchor>
                         .
                     </p>
                 }
                 disabled={disabled}
                 defaultValue="gitlab.com"
-                rules={{
+                {...register('dbt.host_domain', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Host domain'),
                     },
-                }}
+                })}
             />
         </>
     );

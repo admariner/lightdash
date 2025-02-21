@@ -1,167 +1,197 @@
-import { Menu, MenuDivider } from '@blueprintjs/core';
-import { MenuItem2 } from '@blueprintjs/popover2';
+import { subject } from '@casl/ability';
 import {
-    DashboardFilterRule,
-    Explore,
-    fieldId,
-    FilterOperator,
-    friendlyName,
-    getFields,
-    getItemId,
+    createDashboardFilterRuleFromField,
+    hasCustomDimension,
     isDimension,
+    isDimensionValueInvalidDate,
     isField,
-    ResultRow,
+    isFilterableField,
+    type FilterDashboardToRule,
+    type ItemsMap,
+    type ResultValue,
 } from '@lightdash/common';
-import { uuid4 } from '@sentry/utils';
-import React, { FC } from 'react';
-import CopyToClipboard from 'react-copy-to-clipboard';
-import { useParams } from 'react-router-dom';
-import useDashboardFiltersForExplore from '../../hooks/dashboard/useDashboardFiltersForExplore';
+import { Menu } from '@mantine/core';
+import { useClipboard } from '@mantine/hooks';
+import { IconCopy, IconStack } from '@tabler/icons-react';
+import mapValues from 'lodash/mapValues';
+import { useCallback, useMemo, type FC } from 'react';
+import { useParams } from 'react-router';
 import useToaster from '../../hooks/toaster/useToaster';
-import { useApp } from '../../providers/AppProvider';
-import { useDashboardContext } from '../../providers/DashboardProvider';
-import { useTracking } from '../../providers/TrackingProvider';
+import { Can } from '../../providers/Ability';
+import useApp from '../../providers/App/useApp';
+import useDashboardContext from '../../providers/Dashboard/useDashboardContext';
+import useTracking from '../../providers/Tracking/useTracking';
 import { EventName } from '../../types/Events';
-import { CellContextMenuProps } from '../common/Table/types';
+import { FilterDashboardTo } from '../DashboardFilter/FilterDashboardTo';
 import UrlMenuItems from '../Explorer/ResultsCard/UrlMenuItems';
 import DrillDownMenuItem from '../MetricQueryData/DrillDownMenuItem';
-import { useMetricQueryDataContext } from '../MetricQueryData/MetricQueryDataProvider';
+import { useMetricQueryDataContext } from '../MetricQueryData/useMetricQueryDataContext';
+import MantineIcon from '../common/MantineIcon';
+import { type CellContextMenuProps } from '../common/Table/types';
 
 const DashboardCellContextMenu: FC<
     Pick<CellContextMenuProps, 'cell'> & {
-        explore: Explore | undefined;
-        tileUuid: string;
+        itemsMap: ItemsMap | undefined;
     }
-> = ({ cell, explore, tileUuid }) => {
+> = ({ cell, itemsMap }) => {
     const { showToastSuccess } = useToaster();
-    const { openUnderlyingDataModel } = useMetricQueryDataContext();
-    const { addDimensionDashboardFilter } = useDashboardContext();
-    const dashboardFiltersThatApplyToChart = useDashboardFiltersForExplore(
-        tileUuid,
-        explore,
+    const clipboard = useClipboard({ timeout: 200 });
+    const { openUnderlyingDataModal, metricQuery } =
+        useMetricQueryDataContext();
+
+    const addDimensionDashboardFilter = useDashboardContext(
+        (c) => c.addDimensionDashboardFilter,
     );
 
     const meta = cell.column.columnDef.meta;
     const item = meta?.item;
 
-    const value: ResultRow[0]['value'] = cell.getValue()?.value || {};
+    const value: ResultValue = useMemo(
+        () => cell.getValue()?.value || {},
+        [cell],
+    );
+
+    const fieldValues = useMemo(
+        () => mapValues(cell.row.original, (v) => v?.value) || {},
+        [cell.row.original],
+    );
+
+    const filterValue =
+        value.raw === undefined ||
+        (isDimension(item) && isDimensionValueInvalidDate(item, value))
+            ? null // Set as null if value is invalid date or undefined
+            : value.raw;
 
     const filterField =
         isDimension(item) && !item.hidden
             ? [
-                  {
-                      id: uuid4(),
-                      target: {
-                          fieldId: fieldId(item),
-                          tableName: item.table,
-                      },
-                      operator: FilterOperator.EQUALS,
-                      values: [value.raw],
-                      label: undefined,
-                  },
+                  createDashboardFilterRuleFromField({
+                      field: item,
+                      availableTileFilters: {},
+                      isTemporary: true,
+                      value: filterValue,
+                  }),
               ]
             : [];
 
-    const fields = explore && getFields(explore);
-
     const possiblePivotFilters = (
         meta?.pivotReference?.pivotValues || []
-    ).map<DashboardFilterRule>((pivot) => {
-        const pivotField = fields?.find(
-            (field) => getItemId(field) === pivot?.field,
-        );
-        return {
-            id: uuid4(),
-            target: {
-                fieldId: pivot.field,
-                tableName: pivotField?.table || '',
-            },
-            operator: FilterOperator.EQUALS,
-            values: [pivot.value],
-            label: undefined,
-        };
-    });
-    const filters: DashboardFilterRule[] = [
-        ...filterField,
-        ...possiblePivotFilters,
-    ];
+    ).reduce<FilterDashboardToRule[]>((acc, pivot) => {
+        const pivotField = itemsMap?.[pivot?.field];
+        if (
+            !pivotField ||
+            !isField(pivotField) ||
+            !isFilterableField(pivotField)
+        )
+            return acc;
 
+        return [
+            ...acc,
+            createDashboardFilterRuleFromField({
+                field: pivotField,
+                availableTileFilters: {},
+                isTemporary: true,
+                value: pivot.value,
+            }),
+        ];
+    }, []);
+
+    const filters = [...filterField, ...possiblePivotFilters];
     const { track } = useTracking();
     const { user } = useApp();
     const { projectUuid } = useParams<{ projectUuid: string }>();
 
+    const handleCopyToClipboard = useCallback(() => {
+        clipboard.copy(value.formatted);
+        showToastSuccess({ title: 'Copied to clipboard!' });
+    }, [value, clipboard, showToastSuccess]);
+
+    const handleViewUnderlyingData = useCallback(() => {
+        if (meta === undefined) return;
+
+        track({
+            name: EventName.VIEW_UNDERLYING_DATA_CLICKED,
+            properties: {
+                organizationId: user?.data?.organizationUuid,
+                userId: user?.data?.userUuid,
+                projectId: projectUuid,
+            },
+        });
+
+        openUnderlyingDataModal({
+            item: meta.item,
+            value,
+            fieldValues,
+            pivotReference: meta?.pivotReference,
+        });
+    }, [
+        track,
+        user,
+        projectUuid,
+        openUnderlyingDataModal,
+        meta,
+        value,
+        fieldValues,
+    ]);
+
     return (
-        <Menu>
-            {item && value.raw && isField(item) && (
+        <>
+            {item && value.raw && isField(item) ? (
                 <UrlMenuItems urls={item.urls} cell={cell} />
+            ) : null}
+
+            {isField(item) && (item.urls || []).length > 0 && <Menu.Divider />}
+
+            <Menu.Item
+                icon={<MantineIcon icon={IconCopy} />}
+                onClick={handleCopyToClipboard}
+            >
+                Copy value
+            </Menu.Item>
+
+            {item && !isDimension(item) && !hasCustomDimension(metricQuery) && (
+                <Can
+                    I="view"
+                    this={subject('UnderlyingData', {
+                        organizationUuid: user.data?.organizationUuid,
+                        projectUuid: projectUuid,
+                    })}
+                >
+                    <Menu.Item
+                        icon={<MantineIcon icon={IconStack} />}
+                        onClick={handleViewUnderlyingData}
+                    >
+                        View underlying data
+                    </Menu.Item>
+                </Can>
             )}
 
-            {isField(item) && (item.urls || []).length > 0 && <MenuDivider />}
-
-            <CopyToClipboard
-                text={value.formatted}
-                onCopy={() => {
-                    showToastSuccess({ title: 'Copied to clipboard!' });
-                }}
+            <Can
+                I="manage"
+                this={subject('Explore', {
+                    organizationUuid: user.data?.organizationUuid,
+                    projectUuid: projectUuid,
+                })}
             >
-                <MenuItem2 text="Copy value" icon="duplicate" />
-            </CopyToClipboard>
-
-            {item && !isDimension(item) && (
-                <MenuItem2
-                    text="View underlying data"
-                    icon="layers"
-                    onClick={() => {
-                        track({
-                            name: EventName.VIEW_UNDERLYING_DATA_CLICKED,
-                            properties: {
-                                organizationId: user?.data?.organizationUuid,
-                                userId: user?.data?.userUuid,
-                                projectId: projectUuid,
-                            },
-                        });
-                        openUnderlyingDataModel(
-                            value,
-                            meta,
-                            cell.row.original || {},
-                            undefined,
-                            meta?.pivotReference,
-                            dashboardFiltersThatApplyToChart,
-                        );
+                <DrillDownMenuItem
+                    item={item}
+                    fieldValues={fieldValues}
+                    pivotReference={meta?.pivotReference}
+                    trackingData={{
+                        organizationId: user?.data?.organizationUuid,
+                        userId: user?.data?.userUuid,
+                        projectId: projectUuid,
                     }}
                 />
-            )}
-
-            <DrillDownMenuItem
-                row={cell.row.original || {}}
-                dashboardFilters={dashboardFiltersThatApplyToChart}
-                pivotReference={meta?.pivotReference}
-                selectedItem={item}
-                trackingData={{
-                    organizationId: user?.data?.organizationUuid,
-                    userId: user?.data?.userUuid,
-                    projectId: projectUuid,
-                }}
-            />
+            </Can>
 
             {filters.length > 0 && (
-                <MenuItem2 icon="filter" text="Filter dashboard to...">
-                    {filters.map((filter) => {
-                        return (
-                            <MenuItem2
-                                key={filter.id}
-                                text={`${friendlyName(
-                                    filter.target.fieldId,
-                                )} is ${filter.values && filter.values[0]}`}
-                                onClick={() => {
-                                    addDimensionDashboardFilter(filter, true);
-                                }}
-                            />
-                        );
-                    })}
-                </MenuItem2>
+                <FilterDashboardTo
+                    filters={filters}
+                    onAddFilter={addDimensionDashboardFilter}
+                />
             )}
-        </Menu>
+        </>
     );
 };
 

@@ -1,10 +1,10 @@
-import React, { FC } from 'react';
+import { type FC } from 'react';
 import TreeNodes from './TreeNodes';
-import { useTableTreeContext } from './TreeProvider';
+import { useTableTreeContext } from './useTableTree';
 
-const TreeRoot: FC<{ depth?: number }> = ({ depth }) => {
+const TreeRoot: FC = () => {
     const { nodeMap } = useTableTreeContext();
-    return <TreeNodes nodeMap={nodeMap} depth={depth || 0} />;
+    return <TreeNodes nodeMap={nodeMap} />;
 };
 
 export default TreeRoot;

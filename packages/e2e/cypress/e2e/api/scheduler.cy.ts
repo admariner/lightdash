@@ -4,6 +4,7 @@ import {
     DashboardScheduler,
     ScheduledJobs,
     SchedulerAndTargets,
+    SchedulerFormat,
     SchedulerSlackTarget,
     SEED_PROJECT,
     UpdateSchedulerAndTargetsWithoutId,
@@ -16,8 +17,9 @@ const createSchedulerBody: CreateSchedulerAndTargetsWithoutIds = {
     name: 'test',
     cron,
     targets: [{ channel: 'C1' }, { channel: 'C2' }],
-    format: 'image',
+    format: SchedulerFormat.IMAGE,
     options: {},
+    timezone: 'UTC', // Explicitely set the timezone to be UTC since the project default might have been changed which will make the tests fail
 };
 
 const getUpdateSchedulerBody = (
@@ -26,7 +28,7 @@ const getUpdateSchedulerBody = (
     name: 'test2',
     cron,
     targets: [{ schedulerSlackTargetUuid, channel: 'C1' }, { channel: 'C3' }],
-    format: 'image',
+    format: SchedulerFormat.IMAGE,
     options: {},
 });
 
@@ -36,15 +38,13 @@ describe('Lightdash scheduler endpoints', () => {
     });
     it('Should create/update/delete chart scheduler', () => {
         const projectUuid = SEED_PROJECT.project_uuid;
-        cy.request(`${apiUrl}/projects/${projectUuid}/spaces`).then(
+        cy.request(`${apiUrl}/projects/${projectUuid}/charts`).then(
             (projectResponse) => {
-                const savedChart = projectResponse.body.results
-                    .find((s) => s.name === SEED_PROJECT.name)
-                    .queries.find(
-                        (s) =>
-                            s.name ===
-                            'How much revenue do we have per payment method?',
-                    );
+                const savedChart = projectResponse.body.results.find(
+                    (s) =>
+                        s.name ===
+                        'How much revenue do we have per payment method?',
+                );
 
                 // Create
                 cy.request<{ results: SchedulerAndTargets }>({

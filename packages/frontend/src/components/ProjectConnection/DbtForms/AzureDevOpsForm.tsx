@@ -1,35 +1,36 @@
 import { DbtProjectType } from '@lightdash/common';
-import React, { FC } from 'react';
+import { Anchor, PasswordInput, TextInput } from '@mantine/core';
+import { type FC } from 'react';
+import { useFormContext } from 'react-hook-form';
 import {
     hasNoWhiteSpaces,
     startWithSlash,
 } from '../../../utils/fieldValidators';
-import Input from '../../ReactHookForm/Input';
-import PasswordInput from '../../ReactHookForm/PasswordInput';
-import { useProjectFormContext } from '../ProjectFormProvider';
+import { useProjectFormContext } from '../useProjectFormContext';
+import DbtVersionSelect from '../WarehouseForms/Inputs/DbtVersion';
 
 const AzureDevOpsForm: FC<{ disabled: boolean }> = ({ disabled }) => {
     const { savedProject } = useProjectFormContext();
     const requireSecrets: boolean =
         savedProject?.dbtConnection.type !== DbtProjectType.AZURE_DEVOPS;
+    const { register } = useFormContext();
     return (
         <>
             <PasswordInput
-                name="dbt.personal_access_token"
                 label="Personal access token"
-                labelHelp={
+                description={
                     <>
                         <p>
                             This is your secret token used to access Azure
                             Devops. See the
-                            <a
+                            <Anchor
                                 href="https://docs.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Windows"
                                 target="_blank"
                                 rel="noreferrer"
                             >
                                 {' '}
                                 instructions to create a personal access token{' '}
-                            </a>
+                            </Anchor>
                             you can add the custom domain for your project in
                             here.
                         </p>
@@ -40,54 +41,51 @@ const AzureDevOpsForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: requireSecrets ? 'Required field' : undefined,
-                }}
+                required={requireSecrets}
+                {...register('dbt.personal_access_token')}
                 placeholder={
                     disabled || !requireSecrets ? '**************' : undefined
                 }
                 disabled={disabled}
             />
-            <Input
-                name="dbt.organization"
+            <TextInput
                 label="Organization"
-                labelHelp="This is the name of the organization that owns your repository"
-                rules={{
-                    required: 'Required field',
+                description="This is the name of the organization that owns your repository"
+                {...register('dbt.organization', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Repository'),
                     },
-                }}
+                })}
+                required
                 disabled={disabled}
             />
-            <Input
-                name="dbt.project"
+            <TextInput
                 label="Project"
-                labelHelp="This is the name of the project that owns your repository"
-                rules={{
-                    required: 'Required field',
+                description="This is the name of the project that owns your repository"
+                required
+                {...register('dbt.project', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Repository'),
                     },
-                }}
+                })}
                 disabled={disabled}
             />
-            <Input
-                name="dbt.repository"
+            <TextInput
                 label="Repository"
-                labelHelp="This is the name of the repository. For many projects, this is the same as your project name above."
-                rules={{
-                    required: 'Required field',
+                description="This is the name of the repository. For many projects, this is the same as your project name above."
+                required
+                {...register('dbt.repository', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Repository'),
                     },
-                }}
+                })}
                 disabled={disabled}
             />
-            <Input
-                name="dbt.branch"
+            <DbtVersionSelect disabled={disabled} />
+
+            <TextInput
                 label="Branch"
-                labelHelp={
+                description={
                     <>
                         <p>
                             This is the branch in your Azure DevOps repo that
@@ -100,19 +98,18 @@ const AzureDevOpsForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: 'Required field',
+                required
+                {...register('dbt.branch', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Branch'),
                     },
-                }}
+                })}
                 disabled={disabled}
                 defaultValue="main"
             />
-            <Input
-                name="dbt.project_sub_path"
+            <TextInput
                 label="Project directory path"
-                labelHelp={
+                description={
                     <>
                         <p>
                             This is the folder where your <b>dbt_project.yml</b>{' '}
@@ -139,8 +136,8 @@ const AzureDevOpsForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: 'Required field',
+                required
+                {...register('dbt.project_sub_path', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces(
                             'Project directory path',
@@ -149,7 +146,7 @@ const AzureDevOpsForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                             'Project directory path',
                         ),
                     },
-                }}
+                })}
                 disabled={disabled}
                 defaultValue="/"
             />

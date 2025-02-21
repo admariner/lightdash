@@ -1,17 +1,23 @@
-import { Button, FormGroup, Icon } from '@blueprintjs/core';
-import { useState } from 'react';
+import {
+    ActionIcon,
+    Button,
+    Flex,
+    Input,
+    Stack,
+    TextInput,
+} from '@mantine/core';
+import { IconHelpCircle, IconPlus, IconTrash } from '@tabler/icons-react';
+import { useState, type ReactNode } from 'react';
 import { useFieldArray, useFormContext } from 'react-hook-form';
 import DocumentationHelpButton from '../DocumentationHelpButton';
-import { LabelInfoToggleButton } from './FromGroup.styles';
-import Input from './Input';
-import { MultiKeyValuePairRow } from './MultiKeyValuePairsInput.styles';
+import MantineIcon from '../common/MantineIcon';
 
 type Props = {
     name: string;
     label: string;
     disabled?: boolean;
     documentationUrl?: string;
-    labelHelp?: string | JSX.Element;
+    labelHelp?: string | ReactNode;
 };
 export const MultiKeyValuePairsInput = ({
     name,
@@ -26,57 +32,72 @@ export const MultiKeyValuePairsInput = ({
     const [isLabelInfoOpen, setIsLabelInfoOpen] = useState<boolean>(false);
 
     return (
-        <FormGroup
-            className="input-wrapper"
-            label={label}
-            subLabel={isLabelInfoOpen && labelHelp}
-            labelInfo={
+        <Input.Wrapper
+            styles={{
+                label: {
+                    display: 'flex',
+                    alignItems: 'center',
+                },
+            }}
+            label={
                 <>
-                    <span style={{ flex: 1 }}></span>
-                    {documentationUrl && !labelHelp && (
-                        <DocumentationHelpButton url={documentationUrl} />
-                    )}
-                    {labelHelp && (
-                        <LabelInfoToggleButton
-                            onClick={(e) => {
-                                e.preventDefault();
+                    {label}
 
+                    <div style={{ flex: 1 }}></div>
+
+                    {documentationUrl && !labelHelp && (
+                        <DocumentationHelpButton href={documentationUrl} />
+                    )}
+
+                    {labelHelp && (
+                        <ActionIcon
+                            onClick={(
+                                e: React.MouseEvent<HTMLButtonElement>,
+                            ) => {
+                                e.preventDefault();
                                 setIsLabelInfoOpen(!isLabelInfoOpen);
                             }}
                         >
-                            <Icon icon="help" intent="none" iconSize={15} />
-                        </LabelInfoToggleButton>
+                            <MantineIcon icon={IconHelpCircle} />
+                        </ActionIcon>
                     )}
                 </>
             }
+            description={isLabelInfoOpen && labelHelp}
         >
-            {fields.map((field, index) => (
-                <MultiKeyValuePairRow key={field.id}>
-                    <Input
-                        name={`${name}.${index}.key`}
-                        placeholder="Key"
-                        disabled={disabled}
-                    />
-                    <Input
-                        name={`${name}.${index}.value`}
-                        placeholder="Value"
-                        disabled={disabled}
-                    />
-                    <Button
-                        minimal={true}
-                        icon={'cross'}
-                        onClick={() => remove(index)}
-                        disabled={disabled}
-                    />
-                </MultiKeyValuePairRow>
-            ))}
-            <Button
-                minimal
-                onClick={() => append({ key: '', value: '' })}
-                icon={'plus'}
-                text="Add variable"
-                disabled={disabled}
-            />
-        </FormGroup>
+            <Stack>
+                {fields.map((field, index) => (
+                    <Flex key={field.id} gap="xs" align="center">
+                        <TextInput
+                            {...control.register(`${name}.${index}.key`)}
+                            placeholder="Key"
+                            disabled={disabled}
+                        />
+
+                        <TextInput
+                            {...control.register(`${name}.${index}.value`)}
+                            placeholder="Value"
+                            disabled={disabled}
+                        />
+
+                        <ActionIcon
+                            onClick={() => remove(index)}
+                            disabled={disabled}
+                        >
+                            <MantineIcon icon={IconTrash} />
+                        </ActionIcon>
+                    </Flex>
+                ))}
+
+                <Button
+                    size="sm"
+                    onClick={() => append({ key: '', value: '' })}
+                    leftIcon={<MantineIcon icon={IconPlus} />}
+                    disabled={disabled}
+                >
+                    Add variable
+                </Button>
+            </Stack>
+        </Input.Wrapper>
     );
 };

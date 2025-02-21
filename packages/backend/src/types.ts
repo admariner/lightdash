@@ -1,29 +1,50 @@
 import {
     DbtPackages,
-    DbtRpcDocsGenerateResults,
     DbtRpcGetManifestResults,
-    DimensionType,
     Explore,
     ExploreError,
+    LightdashProjectConfig,
 } from '@lightdash/common';
 import { WarehouseCatalog } from '@lightdash/warehouses';
 
 export interface ProjectAdapter {
-    compileAllExplores(): Promise<(Explore | ExploreError)[]>;
+    /**
+     * Compile all explores
+     * @param trackingParams - Optional tracking parameters to track the compilation and lightdash project config (lightdash.config.yml) overrides
+     * @returns A promise that resolves to an array of explores or explore errors
+     */
+    compileAllExplores(
+        trackingParams:
+            | {
+                  userUuid: string;
+                  organizationUuid: string;
+                  projectUuid: string;
+              }
+            | undefined,
+    ): Promise<(Explore | ExploreError)[]>;
+
     getDbtPackages(): Promise<DbtPackages | undefined>;
-    runQuery(sql: string): Promise<{
-        fields: Record<string, { type: DimensionType }>;
-        rows: Record<string, any>[];
-    }>;
+
     test(): Promise<void>;
+
     destroy(): Promise<void>;
+
+    getLightdashProjectConfig(trackingParams: {
+        projectUuid: string;
+        organizationUuid: string;
+        userUuid: string;
+    }): Promise<LightdashProjectConfig>;
 }
 
 export interface DbtClient {
-    installDeps(): Promise<void>;
+    installDeps?(): Promise<void>;
+
     getDbtManifest(): Promise<DbtRpcGetManifestResults>;
-    getDbtCatalog(): Promise<DbtRpcDocsGenerateResults>;
+
     getDbtPackages?(): Promise<DbtPackages | undefined>;
+
+    getSelector(): string | undefined;
+
     test(): Promise<void>;
 }
 

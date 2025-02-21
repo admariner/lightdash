@@ -1,222 +1,392 @@
-import { Intent, Tab, Tabs } from '@blueprintjs/core';
-import { Classes, Popover2Props, Tooltip2 } from '@blueprintjs/popover2';
-
 import {
-    applyDefaultTileTargets,
     assertUnreachable,
     createDashboardFilterRuleFromField,
-    DashboardFilterRule,
-    DashboardTile,
-    fieldId,
-    FilterableField,
-    FilterOperator,
-    FilterRule,
-    getFilterRuleWithDefaultValue,
+    getItemId,
+    isField,
+    isFilterableField,
     matchFieldByType,
     matchFieldByTypeAndName,
     matchFieldExact,
+    type DashboardFilterRule,
+    type DashboardTab,
+    type DashboardTile,
+    type Field,
+    type FilterableDimension,
 } from '@lightdash/common';
-import produce from 'immer';
-import { FC, useCallback, useState } from 'react';
+import {
+    Box,
+    Button,
+    Flex,
+    Group,
+    Stack,
+    Tabs,
+    Text,
+    Tooltip,
+    type PopoverProps,
+} from '@mantine/core';
+import { IconRotate2 } from '@tabler/icons-react';
+import { produce } from 'immer';
+import { useCallback, useMemo, useState, type FC } from 'react';
+import FieldSelect from '../../common/FieldSelect';
 import FieldIcon from '../../common/Filters/FieldIcon';
 import FieldLabel from '../../common/Filters/FieldLabel';
-import SimpleButton from '../../common/SimpleButton';
-import {
-    ActionsWrapper,
-    ApplyButton,
-    ConfigureFilterWrapper,
-    FieldLabelAndIconWrapper,
-} from './FilterConfiguration.styled';
+import MantineIcon from '../../common/MantineIcon';
 import FilterSettings from './FilterSettings';
 import TileFilterConfiguration from './TileFilterConfiguration';
-
-export enum FilterTabs {
-    SETTINGS = 'settings',
-    TILES = 'tiles',
-}
-
-const DEFAULT_TAB = FilterTabs.SETTINGS;
-
-export enum FilterActions {
-    ADD = 'add',
-    REMOVE = 'remove',
-}
+import { DEFAULT_TAB, FilterActions, FilterTabs } from './constants';
+import {
+    getFilterRuleRevertableObject,
+    hasFilterValueSet,
+    hasSavedFilterValueChanged,
+    isFilterEnabled,
+} from './utils';
 
 interface Props {
     tiles: DashboardTile[];
-    field: FilterableField;
-    availableTileFilters: Record<string, FilterableField[] | undefined>;
-    filterRule?: DashboardFilterRule;
-    popoverProps?: Popover2Props;
-    selectedTabId?: string;
+    tabs: DashboardTab[];
+    activeTabUuid: string | undefined;
+    field?: FilterableDimension;
+    fields?: FilterableDimension[];
+    availableTileFilters: Record<string, FilterableDimension[]>;
+    originalFilterRule?: DashboardFilterRule;
+    defaultFilterRule?: DashboardFilterRule;
+    popoverProps?: Omit<PopoverProps, 'children'>;
     isEditMode: boolean;
-    onTabChange: (tabId: FilterTabs) => void;
+    isCreatingNew?: boolean;
+    isTemporary?: boolean;
     onSave: (value: DashboardFilterRule) => void;
-    onBack?: () => void;
 }
+
+const getDefaultField = (
+    fields: FilterableDimension[],
+    selectedField: FilterableDimension,
+) => {
+    return (
+        fields.find(matchFieldExact(selectedField)) ??
+        fields.find(matchFieldByTypeAndName(selectedField)) ??
+        fields.find(matchFieldByType(selectedField))
+    );
+};
 
 const FilterConfiguration: FC<Props> = ({
     isEditMode,
-    selectedTabId = DEFAULT_TAB,
+    isCreatingNew = false,
+    isTemporary = false,
     tiles,
+    tabs,
+    activeTabUuid,
     field,
+    fields,
     availableTileFilters,
-    filterRule,
+    originalFilterRule,
+    defaultFilterRule,
     popoverProps,
     onSave,
-    onBack,
-    onTabChange,
 }) => {
-    const [internalFilterRule, setInternalFilterRule] =
-        useState<DashboardFilterRule>(
-            filterRule
-                ? applyDefaultTileTargets(
-                      filterRule,
-                      field,
-                      availableTileFilters,
-                  )
-                : createDashboardFilterRuleFromField(
-                      field,
-                      availableTileFilters,
-                  ),
-        );
+    const [selectedTabId, setSelectedTabId] = useState<FilterTabs>(DEFAULT_TAB);
+
+    const [selectedField, setSelectedField] = useState<
+        FilterableDimension | undefined
+    >(field);
+
+    const [draftFilterRule, setDraftFilterRule] = useState<
+        DashboardFilterRule | undefined
+    >(defaultFilterRule);
+
+    const isFilterModified = useMemo(() => {
+        if (!originalFilterRule || !draftFilterRule) return false;
+
+        return hasSavedFilterValueChanged(originalFilterRule, draftFilterRule);
+    }, [originalFilterRule, draftFilterRule]);
+
+    const handleChangeField = (newField: FilterableDimension) => {
+        const isCreatingTemporary = isCreatingNew && !isEditMode;
+
+        if (newField && isField(newField) && isFilterableField(newField)) {
+            setDraftFilterRule(
+                createDashboardFilterRuleFromField({
+                    field: newField,
+                    availableTileFilters,
+                    isTemporary: isCreatingTemporary,
+                }),
+            );
+
+            setSelectedField(newField);
+        }
+    };
+
+    const handleRevert = useCallback(() => {
+        if (!originalFilterRule) return;
+
+        setDraftFilterRule((oldDraftFilterRule) => {
+            return oldDraftFilterRule
+                ? {
+                      ...oldDraftFilterRule,
+                      ...getFilterRuleRevertableObject(originalFilterRule),
+                  }
+                : undefined;
+        });
+    }, [originalFilterRule, setDraftFilterRule]);
 
     const handleChangeFilterRule = useCallback(
         (newFilterRule: DashboardFilterRule) => {
-            setInternalFilterRule(newFilterRule);
+            setDraftFilterRule(() => {
+                // When a disabled filter has a value set, it should be enabled by setting it to false
+                const isNewFilterDisabled =
+                    newFilterRule.disabled && !hasFilterValueSet(newFilterRule);
+                return { ...newFilterRule, disabled: isNewFilterDisabled };
+            });
         },
-        [],
-    );
-
-    const handleChangeFilterOperator = useCallback(
-        (operator: FilterRule['operator']) => {
-            setInternalFilterRule((prevState) =>
-                getFilterRuleWithDefaultValue(field, {
-                    ...prevState,
-                    operator: operator,
-                }),
-            );
-        },
-        [field],
+        [setDraftFilterRule],
     );
 
     const handleChangeTileConfiguration = useCallback(
-        (action: FilterActions, tileUuid: string, filter?: FilterableField) => {
+        (action: FilterActions, tileUuid: string, newField?: Field) => {
             const filters = availableTileFilters[tileUuid];
             if (!filters) return;
 
-            setInternalFilterRule((prevState) =>
-                produce(prevState, (draftState) => {
-                    draftState.tileTargets = draftState.tileTargets ?? {};
+            const changedFilterRule = produce(draftFilterRule, (draftState) => {
+                if (!draftState || !selectedField) return;
 
-                    if (action === FilterActions.ADD) {
+                draftState.tileTargets = draftState.tileTargets ?? {};
+
+                switch (action) {
+                    case FilterActions.ADD:
                         const filterableField =
-                            filter ??
-                            filters.find(matchFieldExact(field)) ??
-                            filters.find(matchFieldByTypeAndName(field)) ??
-                            filters.find(matchFieldByType(field));
+                            newField ?? getDefaultField(filters, selectedField);
 
                         if (!filterableField) return draftState;
 
                         draftState.tileTargets[tileUuid] = {
-                            fieldId: fieldId(filterableField),
+                            fieldId: getItemId(filterableField),
                             tableName: filterableField.table,
                         };
-                    } else if (action === FilterActions.REMOVE) {
-                        delete draftState.tileTargets[tileUuid];
-                    } else {
+
+                        return draftState;
+
+                    case FilterActions.REMOVE:
+                        draftState.tileTargets[tileUuid] = false;
+                        return draftState;
+
+                    default:
                         return assertUnreachable(
                             action,
                             'Invalid FilterActions',
                         );
-                    }
-                }),
-            );
+                }
+            });
+
+            setDraftFilterRule(changedFilterRule);
         },
-        [field, availableTileFilters],
+        [
+            selectedField,
+            availableTileFilters,
+            setDraftFilterRule,
+            draftFilterRule,
+        ],
+    );
+
+    const handleToggleAll = useCallback(
+        (checked: boolean, targetTileUuids: string[]) => {
+            if (!checked) {
+                const newFilterRule = produce(draftFilterRule, (draftState) => {
+                    if (!draftState || !selectedField) return;
+
+                    Object.entries(availableTileFilters).forEach(
+                        ([tileUuid]) => {
+                            if (
+                                !draftState.tileTargets ||
+                                !targetTileUuids.includes(tileUuid)
+                            )
+                                return;
+                            draftState.tileTargets[tileUuid] = false;
+                        },
+                    );
+                    return draftState;
+                });
+
+                setDraftFilterRule(newFilterRule);
+            } else {
+                const newFilterRule = produce(draftFilterRule, (draftState) => {
+                    if (!draftState || !selectedField) return;
+                    targetTileUuids.forEach((tileUuid) => {
+                        if (!draftState.tileTargets) return;
+                        draftState.tileTargets[tileUuid] = {
+                            fieldId: getItemId(selectedField),
+                            tableName: selectedField.table,
+                        };
+                    });
+                    return draftState;
+                });
+
+                setDraftFilterRule(newFilterRule);
+            }
+        },
+        [
+            selectedField,
+            availableTileFilters,
+            setDraftFilterRule,
+            draftFilterRule,
+        ],
+    );
+
+    const isApplyDisabled = !isFilterEnabled(
+        draftFilterRule,
+        isEditMode,
+        isCreatingNew,
     );
 
     return (
-        <ConfigureFilterWrapper>
-            <FieldLabelAndIconWrapper>
-                <FieldIcon item={field} />
-                <FieldLabel item={field} />
-            </FieldLabelAndIconWrapper>
-
+        <Stack>
             <Tabs
-                selectedTabId={selectedTabId}
-                onChange={onTabChange}
-                renderActiveTabPanelOnly
+                value={selectedTabId}
+                onTabChange={(tabId: FilterTabs) => setSelectedTabId(tabId)}
             >
-                <Tab
-                    id="settings"
-                    title={
-                        <Tooltip2
-                            content="Select the value you want to filter your dimension by"
-                            position="bottom"
+                {isCreatingNew || isEditMode || isTemporary ? (
+                    <Tabs.List mb="md">
+                        <Tooltip
+                            label="Select the value you want to filter your dimension by"
+                            position="top-start"
                         >
-                            Settings
-                        </Tooltip2>
-                    }
-                    panel={
-                        <FilterSettings
-                            isEditMode={isEditMode}
-                            field={field}
-                            filterRule={internalFilterRule}
-                            onChangeFilterOperator={handleChangeFilterOperator}
-                            onChangeFilterRule={handleChangeFilterRule}
-                            popoverProps={popoverProps}
-                        />
-                    }
-                />
+                            <Tabs.Tab value={FilterTabs.SETTINGS}>
+                                Filter Settings
+                            </Tabs.Tab>
+                        </Tooltip>
 
-                <Tab
-                    id="tiles"
-                    title={
-                        <Tooltip2
-                            content="Select tiles to apply filter to and which field to filter by"
-                            position="bottom"
+                        <Tooltip
+                            label="Select tiles to apply filter to and which field to filter by"
+                            position="top-start"
                         >
-                            Tiles
-                        </Tooltip2>
-                    }
-                    panel={
+                            <Tabs.Tab
+                                value={FilterTabs.TILES}
+                                disabled={!selectedField}
+                            >
+                                Chart tiles
+                            </Tabs.Tab>
+                        </Tooltip>
+                    </Tabs.List>
+                ) : null}
+
+                <Tabs.Panel value={FilterTabs.SETTINGS} miw={350} maw={520}>
+                    <Stack spacing="sm">
+                        {!!fields && isCreatingNew ? (
+                            <FieldSelect
+                                data-testid="FilterConfiguration/FieldSelect"
+                                size="xs"
+                                focusOnRender={true}
+                                label={
+                                    <Text>
+                                        Select a dimension to filter{' '}
+                                        <Text color="red" span>
+                                            *
+                                        </Text>{' '}
+                                    </Text>
+                                }
+                                withinPortal={popoverProps?.withinPortal}
+                                onDropdownOpen={popoverProps?.onOpen}
+                                onDropdownClose={popoverProps?.onClose}
+                                hasGrouping
+                                item={selectedField}
+                                items={fields}
+                                onChange={(newField) => {
+                                    if (!newField) return;
+
+                                    handleChangeField(newField);
+                                }}
+                            />
+                        ) : (
+                            selectedField && (
+                                <Group spacing="xs">
+                                    <FieldIcon item={selectedField} />
+                                    {originalFilterRule?.label &&
+                                    !isEditMode ? (
+                                        <Text span fw={500}>
+                                            {originalFilterRule.label}
+                                        </Text>
+                                    ) : (
+                                        <FieldLabel item={selectedField} />
+                                    )}
+                                </Group>
+                            )
+                        )}
+
+                        {!!selectedField && draftFilterRule && (
+                            <FilterSettings
+                                isEditMode={isEditMode}
+                                isCreatingNew={isCreatingNew}
+                                field={selectedField}
+                                filterRule={draftFilterRule}
+                                onChangeFilterRule={handleChangeFilterRule}
+                                popoverProps={popoverProps}
+                            />
+                        )}
+                    </Stack>
+                </Tabs.Panel>
+
+                {!!selectedField && draftFilterRule && (
+                    <Tabs.Panel
+                        value={FilterTabs.TILES}
+                        w={500}
+                        data-testid="DashboardFilterConfiguration/ChartTiles"
+                    >
                         <TileFilterConfiguration
-                            field={field}
-                            filterRule={internalFilterRule}
+                            field={selectedField}
+                            tabs={tabs}
+                            activeTabUuid={activeTabUuid}
+                            filterRule={draftFilterRule}
                             popoverProps={popoverProps}
                             tiles={tiles}
                             availableTileFilters={availableTileFilters}
                             onChange={handleChangeTileConfiguration}
+                            onToggleAll={handleToggleAll}
                         />
-                    }
-                />
+                    </Tabs.Panel>
+                )}
             </Tabs>
 
-            <ActionsWrapper>
-                {onBack && (
-                    <SimpleButton small onClick={onBack}>
-                        Back
-                    </SimpleButton>
-                )}
+            <Flex gap="sm">
+                <Box sx={{ flexGrow: 1 }} />
 
-                <ApplyButton
-                    type="submit"
-                    className={Classes.POPOVER2_DISMISS}
-                    intent={Intent.PRIMARY}
-                    text="Apply"
-                    disabled={
-                        ![
-                            FilterOperator.NULL,
-                            FilterOperator.NOT_NULL,
-                        ].includes(internalFilterRule.operator) &&
-                        (!internalFilterRule.values ||
-                            internalFilterRule.values.length <= 0)
-                    }
-                    onClick={() => onSave(internalFilterRule)}
-                />
-            </ActionsWrapper>
-        </ConfigureFilterWrapper>
+                {!isTemporary &&
+                    isFilterModified &&
+                    selectedTabId === FilterTabs.SETTINGS &&
+                    !isEditMode && (
+                        <Tooltip
+                            label="Reset to original value"
+                            position="left"
+                        >
+                            <Button
+                                size="xs"
+                                variant="default"
+                                color="gray"
+                                onClick={handleRevert}
+                            >
+                                <MantineIcon icon={IconRotate2} />
+                            </Button>
+                        </Tooltip>
+                    )}
+
+                <Tooltip
+                    label="Filter field and value required"
+                    disabled={!isApplyDisabled}
+                >
+                    <Box>
+                        <Button
+                            size="xs"
+                            variant="filled"
+                            disabled={isApplyDisabled}
+                            onClick={() => {
+                                setSelectedTabId(FilterTabs.SETTINGS);
+
+                                if (!!draftFilterRule) onSave(draftFilterRule);
+                            }}
+                        >
+                            Apply
+                        </Button>
+                    </Box>
+                </Tooltip>
+            </Flex>
+        </Stack>
     );
 };
 

@@ -2,26 +2,30 @@ import {
     OrganizationMemberRole,
     UserActivity,
     UserWithCount,
+    ViewStatistics,
 } from '@lightdash/common';
+import * as Sentry from '@sentry/node';
 import { Knex } from 'knex';
 import {
     AnalyticsChartViewsTableName,
     AnalyticsDashboardViewsTableName,
 } from '../database/entities/analytics';
-import { OrganizationMembershipsTableName } from '../database/entities/organizationMemberships';
-import { OrganizationTableName } from '../database/entities/organizations';
-import { UserTableName } from '../database/entities/users';
+import { DashboardsTableName } from '../database/entities/dashboards';
+import { SavedChartsTableName } from '../database/entities/savedCharts';
 import {
+    chartViewsSql,
     chartWeeklyAverageQueriesSql,
     chartWeeklyQueryingUsersSql,
+    dashboardViewsSql,
     numberWeeklyQueryingUsersSql,
     tableMostCreatedChartsSql,
     tableMostQueriesSql,
     tableNoQueriesSql,
+    userMostViewedDashboardSql,
     usersInProjectSql,
 } from './AnalyticsModelSql';
 
-type Dependencies = {
+type DbUserWithCountArguments = {
     database: Knex;
 };
 
@@ -29,30 +33,85 @@ type DbUserWithCount = {
     user_uuid: string;
     first_name: string;
     last_name: string;
-    count: number;
+    count: number | null;
 };
+
 export class AnalyticsModel {
     private database: Knex;
 
-    constructor(dependencies: Dependencies) {
-        this.database = dependencies.database;
+    constructor(args: DbUserWithCountArguments) {
+        this.database = args.database;
     }
 
-    async countChartViews(chartUuid: string): Promise<number> {
-        const [{ count }] = await this.database(AnalyticsChartViewsTableName)
-            .count('chart_uuid')
-            .where('chart_uuid', chartUuid);
+    async getChartViewStats(chartUuid: string): Promise<ViewStatistics> {
+        return Sentry.startSpan(
+            {
+                op: 'AnalyticsModel.getChartStats',
+                name: 'AnalyticsModel.getChartStats',
+            },
+            async () => {
+                const stats = await this.database(AnalyticsChartViewsTableName)
+                    .count({ views: '*' })
+                    .min({
+                        first_viewed_at: 'timestamp',
+                    })
+                    .where('chart_uuid', chartUuid)
+                    .first();
 
-        return Number(count);
+                return {
+                    views:
+                        typeof stats?.views === 'number'
+                            ? stats.views
+                            : parseInt(stats?.views ?? '0', 10),
+                    firstViewedAt: stats?.first_viewed_at ?? new Date(),
+                };
+            },
+        );
     }
 
     async addChartViewEvent(
         chartUuid: string,
         userUuid: string,
     ): Promise<void> {
-        await this.database(AnalyticsChartViewsTableName).insert({
-            chart_uuid: chartUuid,
-            user_uuid: userUuid,
+        await this.database.transaction(async (trx) => {
+            await trx(AnalyticsChartViewsTableName).insert({
+                chart_uuid: chartUuid,
+                user_uuid: userUuid,
+            });
+            await trx(SavedChartsTableName)
+                .update({
+                    views_count: trx.raw(
+                        'views_count + 1',
+                    ) as unknown as number,
+                    first_viewed_at: trx.raw(
+                        'COALESCE(first_viewed_at, NOW())',
+                    ) as unknown as Date, // update first_viewed_at if it is null
+                })
+                .where('saved_query_uuid', chartUuid);
+        });
+    }
+
+    async addSqlChartViewEvent(
+        sqlChartUuid: string,
+        userUuid: string,
+    ): Promise<void> {
+        await this.database.transaction(async (trx) => {
+            // TODO add sql views table for tracking user views
+            /*  await trx(AnalyticsSqlChartViewsTableName).insert({
+                chart_uuid: chartUuid,
+                user_uuid: userUuid,
+            }); */
+            await trx(`saved_sql`)
+                .update({
+                    views_count: trx.raw(
+                        'views_count + 1',
+                    ) as unknown as number,
+                    first_viewed_at: trx.raw(
+                        'COALESCE(first_viewed_at, NOW())',
+                    ) as unknown as Date,
+                    last_viewed_at: trx.raw('NOW()') as unknown as Date,
+                })
+                .where('saved_sql_uuid', sqlChartUuid);
         });
     }
 
@@ -60,6 +119,7 @@ export class AnalyticsModel {
         const [{ count }] = await this.database(
             AnalyticsDashboardViewsTableName,
         )
+            .select('count')
             .count('dashboard_uuid')
             .where('dashboard_uuid', dashboardUuid);
 
@@ -70,9 +130,21 @@ export class AnalyticsModel {
         dashboardUuid: string,
         userUuid: string,
     ): Promise<void> {
-        await this.database(AnalyticsDashboardViewsTableName).insert({
-            dashboard_uuid: dashboardUuid,
-            user_uuid: userUuid,
+        await this.database.transaction(async (trx) => {
+            await this.database(AnalyticsDashboardViewsTableName).insert({
+                dashboard_uuid: dashboardUuid,
+                user_uuid: userUuid,
+            });
+            await trx(DashboardsTableName)
+                .update({
+                    views_count: trx.raw(
+                        'views_count + 1',
+                    ) as unknown as number,
+                    first_viewed_at: trx.raw(
+                        'COALESCE(first_viewed_at, NOW())',
+                    ) as unknown as Date, // update first_viewed_at if it is null
+                })
+                .where('dashboard_uuid', dashboardUuid);
         });
     }
 
@@ -115,21 +187,42 @@ export class AnalyticsModel {
             chartWeeklyAverageQueriesSql(userUuids, projectUuid),
         );
 
+        const dashboardViews = await this.database.raw(
+            dashboardViewsSql(projectUuid),
+        );
+
+        const userMostViewedDashboards = await this.database.raw<{
+            rows: {
+                user_uuid: string;
+                first_name: string;
+                last_name: string;
+                dashboard_name: string;
+                count: number;
+            }[];
+        }>(userMostViewedDashboardSql(projectUuid));
+        const chartViews = await this.database.raw(chartViewsSql(projectUuid));
         const parseUsersWithCount = (
             userData: DbUserWithCount,
         ): UserWithCount => ({
             userUuid: userData.user_uuid,
             firstName: userData.first_name,
             lastName: userData.last_name,
-            count: userData.count,
+            count: userData.count || undefined,
         });
+
         return {
             numberUsers: usersInProject.length,
+            numberInteractiveViewers: usersInProject.filter(
+                (user) =>
+                    user.role === OrganizationMemberRole.INTERACTIVE_VIEWER,
+            ).length,
             numberViewers: usersInProject.filter(
                 (user) => user.role === OrganizationMemberRole.VIEWER,
             ).length,
             numberEditors: usersInProject.filter(
-                (user) => user.role === OrganizationMemberRole.EDITOR,
+                (user) =>
+                    user.role === OrganizationMemberRole.EDITOR ||
+                    user.role === OrganizationMemberRole.DEVELOPER,
             ).length,
             numberAdmins: usersInProject.filter(
                 (user) => user.role === OrganizationMemberRole.ADMIN,
@@ -141,6 +234,17 @@ export class AnalyticsModel {
             tableNoQueries: tableNoQueries.rows.map(parseUsersWithCount),
             chartWeeklyQueryingUsers: chartWeeklyQueryingUsers.rows,
             chartWeeklyAverageQueries: chartWeeklyAverageQueries.rows,
+            dashboardViews: dashboardViews.rows,
+            userMostViewedDashboards: userMostViewedDashboards.rows.map(
+                (row) => ({
+                    userUuid: row.user_uuid,
+                    firstName: row.first_name,
+                    lastName: row.last_name,
+                    count: row.count,
+                    dashboardName: row.dashboard_name,
+                }),
+            ),
+            chartViews: chartViews.rows,
         };
     }
 }

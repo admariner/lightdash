@@ -1,30 +1,50 @@
-import { AllowedEmailDomains } from '@lightdash/common';
+import {
+    AllowedEmailDomains,
+    isAllowedEmailDomainProjectRole,
+    isAllowedEmailDomainsRole,
+    OrganizationMemberRole,
+    ProjectMemberRole,
+} from '@lightdash/common';
 import { Knex } from 'knex';
 import {
+    DbOrganizationAllowedEmailDomainProjects,
     DbOrganizationAllowedEmailDomains,
+    OrganizationAllowedEmailDomainProjectsTableName,
     OrganizationAllowedEmailDomainsTableName,
 } from '../database/entities/organizationsAllowedEmailDomains';
 
-type Dependencies = {
+type OrganizationAllowedEmailDomainsModelArguments = {
     database: Knex;
 };
 
 export class OrganizationAllowedEmailDomainsModel {
     private database: Knex;
 
-    constructor(dependencies: Dependencies) {
-        this.database = dependencies.database;
+    constructor(args: OrganizationAllowedEmailDomainsModelArguments) {
+        this.database = args.database;
     }
 
     static mapDbOrganizationAllowedEmailDomainsToOrganizationAllowedEmailDomains(
         dbOrganizationAllowedEmailDomains: DbOrganizationAllowedEmailDomains,
+        dbOrganizationAllowedEmailDomainProjects: DbOrganizationAllowedEmailDomainProjects[],
     ): AllowedEmailDomains {
         return {
             organizationUuid:
                 dbOrganizationAllowedEmailDomains.organization_uuid,
             emailDomains: dbOrganizationAllowedEmailDomains.email_domains,
-            role: dbOrganizationAllowedEmailDomains.role,
-            projectUuids: dbOrganizationAllowedEmailDomains.project_uuids,
+            role: isAllowedEmailDomainsRole(
+                dbOrganizationAllowedEmailDomains.role,
+            )
+                ? dbOrganizationAllowedEmailDomains.role
+                : OrganizationMemberRole.MEMBER,
+            projects: dbOrganizationAllowedEmailDomainProjects.map(
+                ({ project_uuid, role }) => ({
+                    projectUuid: project_uuid,
+                    role: isAllowedEmailDomainProjectRole(role)
+                        ? role
+                        : ProjectMemberRole.VIEWER,
+                }),
+            ),
         };
     }
 
@@ -40,8 +60,16 @@ export class OrganizationAllowedEmailDomainsModel {
         if (!row) {
             return undefined;
         }
+
+        const allowedEmailDomainProjects = await this.database(
+            OrganizationAllowedEmailDomainProjectsTableName,
+        )
+            .where('allowed_email_domains_uuid', row.allowed_email_domains_uuid)
+            .select('*');
+
         return OrganizationAllowedEmailDomainsModel.mapDbOrganizationAllowedEmailDomainsToOrganizationAllowedEmailDomains(
             row,
+            allowedEmailDomainProjects,
         );
     }
 
@@ -58,15 +86,43 @@ export class OrganizationAllowedEmailDomainsModel {
     async upsertAllowedEmailDomains(
         data: AllowedEmailDomains,
     ): Promise<AllowedEmailDomains> {
-        await this.database(OrganizationAllowedEmailDomainsTableName)
-            .insert({
-                organization_uuid: data.organizationUuid,
-                email_domains: data.emailDomains,
-                role: data.role,
-                project_uuids: data.projectUuids,
-            })
-            .onConflict('organization_uuid')
-            .merge();
+        await this.database.transaction(async (trx) => {
+            const [allowedEmailDomain] = await trx(
+                OrganizationAllowedEmailDomainsTableName,
+            )
+                .insert({
+                    organization_uuid: data.organizationUuid,
+                    email_domains: data.emailDomains,
+                    role: data.role,
+                })
+                .onConflict('organization_uuid')
+                .merge()
+                .returning('*');
+
+            if (!allowedEmailDomain) {
+                throw new Error('Failed to upsert allowed email domains');
+            }
+
+            await trx(OrganizationAllowedEmailDomainProjectsTableName)
+                .where(
+                    'allowed_email_domains_uuid',
+                    allowedEmailDomain.allowed_email_domains_uuid,
+                )
+                .delete();
+
+            if (data.projects.length > 0) {
+                await trx(
+                    OrganizationAllowedEmailDomainProjectsTableName,
+                ).insert(
+                    data.projects.map((project) => ({
+                        allowed_email_domains_uuid:
+                            allowedEmailDomain.allowed_email_domains_uuid,
+                        project_uuid: project.projectUuid,
+                        role: project.role,
+                    })),
+                );
+            }
+        });
 
         return this.getAllowedEmailDomains(data.organizationUuid);
     }

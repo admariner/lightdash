@@ -1,115 +1,63 @@
-import { Button } from '@blueprintjs/core';
-import { Breadcrumbs2 } from '@blueprintjs/popover2';
-import { subject } from '@casl/ability';
-import { LightdashMode } from '@lightdash/common';
-import { Stack } from '@mantine/core';
-import { IconChartBar } from '@tabler/icons-react';
-import { FC } from 'react';
-import { Helmet } from 'react-helmet';
-import { useHistory, useParams } from 'react-router-dom';
+import { ContentType, LightdashMode } from '@lightdash/common';
+import { Button, Group, Stack } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
+import { type FC } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import Page from '../components/common/Page/Page';
-import {
-    PageBreadcrumbsWrapper,
-    PageHeader,
-} from '../components/common/Page/Page.styles';
-import ResourceView from '../components/common/ResourceView';
-import {
-    ResourceViewItemType,
-    wrapResourceView,
-} from '../components/common/ResourceView/resourceTypeUtils';
-import { SortDirection } from '../components/common/ResourceView/ResourceViewList';
-import { LoadingChart } from '../components/SimpleChart';
-import { useSavedCharts } from '../hooks/useSpaces';
-import { useApp } from '../providers/AppProvider';
+import PageBreadcrumbs from '../components/common/PageBreadcrumbs';
+import InfiniteResourceTable from '../components/common/ResourceView/InfiniteResourceTable';
+import useCreateInAnySpaceAccess from '../hooks/user/useCreateInAnySpaceAccess';
+import useApp from '../providers/App/useApp';
 
 const SavedQueries: FC = () => {
     const { projectUuid } = useParams<{ projectUuid: string }>();
-    const { isLoading, data: savedQueries = [] } = useSavedCharts(projectUuid);
-
-    const { user, health } = useApp();
-    const cannotView = user.data?.ability?.cannot('view', 'SavedChart');
-
-    const history = useHistory();
+    const { health } = useApp();
+    const navigate = useNavigate();
     const isDemo = health.data?.mode === LightdashMode.DEMO;
 
-    const userCanManageCharts = user.data?.ability?.can(
-        'manage',
-        subject('SavedChart', {
-            organizationUuid: user.data?.organizationUuid,
-            projectUuid,
-        }),
+    const userCanCreateCharts = useCreateInAnySpaceAccess(
+        projectUuid,
+        'SavedChart',
     );
 
-    if (isLoading && !cannotView) {
-        return <LoadingChart />;
-    }
-
     const handleCreateChart = () => {
-        history.push(`/projects/${projectUuid}/tables`);
+        void navigate(`/projects/${projectUuid}/tables`);
     };
 
     return (
-        <Page>
-            <Helmet>
-                <title>Saved charts - Lightdash</title>
-            </Helmet>
-
-            <Stack spacing="xl" w={900}>
-                <PageHeader>
-                    <PageBreadcrumbsWrapper>
-                        <Breadcrumbs2
-                            items={[
-                                {
-                                    href: '/home',
-                                    text: 'Home',
-                                    className: 'home-breadcrumb',
-                                    onClick: (e) => {
-                                        history.push('/home');
-                                    },
-                                },
-                                {
-                                    text: 'All saved charts',
-                                },
-                            ]}
-                        />
-                    </PageBreadcrumbsWrapper>
-
-                    {savedQueries.length > 0 &&
-                    !isDemo &&
-                    userCanManageCharts ? (
+        <Page
+            title="Saved charts"
+            withCenteredRoot
+            withCenteredContent
+            withXLargePaddedContent
+            withLargeContent
+        >
+            <Stack spacing="xxl" w="100%">
+                <Group position="apart">
+                    <PageBreadcrumbs
+                        items={[
+                            { title: 'Home', to: '/home' },
+                            { title: 'All saved charts', active: true },
+                        ]}
+                    />
+                    {!isDemo && userCanCreateCharts ? (
                         <Button
-                            icon="plus"
-                            intent="primary"
+                            leftIcon={<IconPlus size={18} />}
                             onClick={handleCreateChart}
                         >
                             Create chart
                         </Button>
                     ) : undefined}
-                </PageHeader>
+                </Group>
 
-                <ResourceView
-                    items={wrapResourceView(
-                        savedQueries,
-                        ResourceViewItemType.CHART,
-                    )}
-                    listProps={{
-                        defaultSort: { updatedAt: SortDirection.DESC },
-                    }}
-                    emptyStateProps={{
-                        icon: <IconChartBar size={30} />,
-                        title: 'No charts added yet',
-                        action:
-                            !isDemo && userCanManageCharts ? (
-                                <Button
-                                    icon="plus"
-                                    intent="primary"
-                                    onClick={handleCreateChart}
-                                >
-                                    Create chart
-                                </Button>
-                            ) : undefined,
-                    }}
-                />
+                {projectUuid ? (
+                    <InfiniteResourceTable
+                        filters={{
+                            projectUuid,
+                            contentTypes: [ContentType.CHART],
+                        }}
+                    />
+                ) : null}
             </Stack>
         </Page>
     );

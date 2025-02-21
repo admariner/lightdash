@@ -1,10 +1,10 @@
-import { ApiError, SavedChart } from '@lightdash/common';
-import { useMutation, useQueryClient } from 'react-query';
+import { type ApiError, type TogglePinnedItemInfo } from '@lightdash/common';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { lightdashApi } from '../../api';
 import useToaster from '../toaster/useToaster';
 
 const updateChartPinning = async (data: { uuid: string }) =>
-    lightdashApi<SavedChart>({
+    lightdashApi<TogglePinnedItemInfo>({
         url: `/saved/${data.uuid}/pinning`,
         method: 'PATCH',
         body: JSON.stringify({}),
@@ -12,8 +12,8 @@ const updateChartPinning = async (data: { uuid: string }) =>
 
 export const useChartPinningMutation = () => {
     const queryClient = useQueryClient();
-    const { showToastError, showToastSuccess } = useToaster();
-    return useMutation<SavedChart, ApiError, { uuid: string }>(
+    const { showToastApiError, showToastSuccess } = useToaster();
+    return useMutation<TogglePinnedItemInfo, ApiError, { uuid: string }>(
         updateChartPinning,
         {
             mutationKey: ['chart_pinning_update'],
@@ -22,13 +22,18 @@ export const useChartPinningMutation = () => {
                     'saved_query',
                     variables.uuid,
                 ]);
-                await queryClient.invalidateQueries('spaces');
+                await queryClient.invalidateQueries(['pinned_items']);
+                await queryClient.invalidateQueries(['spaces']);
                 await queryClient.invalidateQueries([
                     'space',
                     savedChart.projectUuid,
                     savedChart.spaceUuid,
                 ]);
-                if (savedChart.pinnedListUuid) {
+                await queryClient.invalidateQueries([
+                    'most-popular-and-recently-updated',
+                ]);
+                await queryClient.invalidateQueries(['content']);
+                if (savedChart.isPinned) {
                     showToastSuccess({
                         title: 'Success! Chart was pinned to homepage',
                     });
@@ -38,10 +43,10 @@ export const useChartPinningMutation = () => {
                     });
                 }
             },
-            onError: (error) => {
-                showToastError({
+            onError: ({ error }) => {
+                showToastApiError({
                     title: 'Failed to pin chart',
-                    subtitle: error.error.message,
+                    apiError: error,
                 });
             },
         },

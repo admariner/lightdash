@@ -1,17 +1,18 @@
 // eslint-disable-next-line max-classes-per-file
-import { DbtLog } from './job';
+import { type AnyType } from './any';
+import { type DbtLog } from './job';
 
 type LightdashErrorParams = {
     message: string;
     name: string;
     statusCode: number;
-    data: { [key: string]: any };
+    data: { [key: string]: AnyType };
 };
 
 export class LightdashError extends Error {
     statusCode: number;
 
-    data: { [key: string]: any };
+    data: { [key: string]: AnyType };
 
     constructor({ message, name, statusCode, data }: LightdashErrorParams) {
         super(message);
@@ -24,7 +25,7 @@ export class LightdashError extends Error {
 export class ForbiddenError extends LightdashError {
     constructor(
         message = "You don't have access to this resource or action",
-        data: { [key: string]: any } = {},
+        data: { [key: string]: AnyType } = {},
     ) {
         super({
             message,
@@ -35,10 +36,24 @@ export class ForbiddenError extends LightdashError {
     }
 }
 
+export class DeactivatedAccountError extends LightdashError {
+    constructor(
+        message = 'Your account has been deactivated. Please contact your organization administrator.',
+        data: { [key: string]: AnyType } = {},
+    ) {
+        super({
+            message,
+            name: 'DeactivatedAccountError',
+            statusCode: 403,
+            data,
+        });
+    }
+}
+
 export class AuthorizationError extends LightdashError {
     constructor(
         message = "You don't have authorization to perform this action",
-        data: { [key: string]: any } = {},
+        data: { [key: string]: AnyType } = {},
     ) {
         super({
             message,
@@ -74,7 +89,7 @@ export class ExpiredError extends LightdashError {
 export class ParameterError extends LightdashError {
     constructor(
         message: string = 'Incorrect parameters',
-        data: Record<string, any> = {},
+        data: Record<string, AnyType> = {},
     ) {
         super({
             message,
@@ -86,7 +101,7 @@ export class ParameterError extends LightdashError {
 }
 
 export class NonCompiledModelError extends LightdashError {
-    constructor(message: string, data: { [key: string]: any } = {}) {
+    constructor(message: string, data: { [key: string]: AnyType } = {}) {
         super({
             message,
             name: 'NonCompiledModelError',
@@ -97,23 +112,12 @@ export class NonCompiledModelError extends LightdashError {
 }
 
 export class MissingCatalogEntryError extends LightdashError {
-    constructor(message: string, data: { [key: string]: any }) {
+    constructor(message: string, data: { [key: string]: AnyType }) {
         super({
             message,
             name: 'MissingCatalogEntryError',
             statusCode: 400,
             data,
-        });
-    }
-}
-
-export class NoServerRunningError extends LightdashError {
-    constructor(message: string) {
-        super({
-            message,
-            name: 'NoServerRunningError',
-            statusCode: 500,
-            data: {},
         });
     }
 }
@@ -131,8 +135,8 @@ export class MissingWarehouseCredentialsError extends LightdashError {
 
 export class UnexpectedServerError extends LightdashError {
     constructor(
-        message = 'Unexpected error in Lightdash server',
-        data: { [key: string]: any } = {},
+        message = 'Something went wrong.',
+        data: { [key: string]: AnyType } = {},
     ) {
         super({
             message,
@@ -142,16 +146,28 @@ export class UnexpectedServerError extends LightdashError {
         });
     }
 }
-
+export class UnexpectedIndexError extends LightdashError {
+    constructor(
+        message = 'Invalid index in array.',
+        data: { [key: string]: AnyType } = {},
+    ) {
+        super({
+            message,
+            name: 'UnexpectedIndexError',
+            statusCode: 500,
+            data,
+        });
+    }
+}
 export class UnexpectedGitError extends LightdashError {
     constructor(
         message = 'Unexpected error in Git adapter',
-        data: { [key: string]: any } = {},
+        data: { [key: string]: AnyType } = {},
     ) {
         super({
             message,
             name: 'UnexpectedGitError',
-            statusCode: 500,
+            statusCode: 400,
             data,
         });
     }
@@ -159,8 +175,8 @@ export class UnexpectedGitError extends LightdashError {
 
 export class UnexpectedDatabaseError extends LightdashError {
     constructor(
-        message = 'Unexpected error in Lightdash database',
-        data: { [key: string]: any } = {},
+        message = 'Unexpected error in Lightdash database.',
+        data: { [key: string]: AnyType } = {},
     ) {
         super({
             message,
@@ -174,12 +190,12 @@ export class UnexpectedDatabaseError extends LightdashError {
 export class ParseError extends LightdashError {
     constructor(
         message = 'Error parsing dbt project and lightdash metadata',
-        data: { [key: string]: any } = {},
+        data: { [key: string]: AnyType } = {},
     ) {
         super({
             message,
             name: 'ParseError',
-            statusCode: 500,
+            statusCode: 400,
             data,
         });
     }
@@ -188,12 +204,12 @@ export class ParseError extends LightdashError {
 export class CompileError extends LightdashError {
     constructor(
         message = 'Error compiling sql from Lightdash configuration',
-        data: Record<string, any> = {},
+        data: Record<string, AnyType> = {},
     ) {
         super({
             message,
             name: 'CompileError',
-            statusCode: 500,
+            statusCode: 400,
             data,
         });
     }
@@ -202,26 +218,12 @@ export class CompileError extends LightdashError {
 export class FieldReferenceError extends LightdashError {
     constructor(
         message = 'Failed to reference field in dbt project',
-        data: Record<string, any> = {},
+        data: Record<string, AnyType> = {},
     ) {
         super({
             message,
             name: 'FieldReferenceError',
             statusCode: 400,
-            data,
-        });
-    }
-}
-
-export class NetworkError extends LightdashError {
-    constructor(
-        message = 'Error connecting to external service',
-        data: { [key: string]: any } = {},
-    ) {
-        super({
-            message,
-            name: 'NetworkError',
-            statusCode: 500,
             data,
         });
     }
@@ -234,21 +236,10 @@ export class DbtError extends LightdashError {
         super({
             message,
             name: 'DbtError',
-            statusCode: 500,
+            statusCode: 400,
             data: {},
         });
         this.logs = logs;
-    }
-}
-
-export class RetryableNetworkError extends LightdashError {
-    constructor(message: string) {
-        super({
-            message,
-            name: 'RetryableNetworkError',
-            statusCode: 503,
-            data: {},
-        });
     }
 }
 
@@ -263,30 +254,41 @@ export class NotFoundError extends LightdashError {
     }
 }
 
+export class InvalidUser extends LightdashError {
+    constructor(message: string) {
+        super({
+            message,
+            name: 'InvalidUser',
+            statusCode: 404,
+            data: {},
+        });
+    }
+}
+
 export class WarehouseConnectionError extends LightdashError {
     constructor(message: string) {
         super({
             message,
             name: 'WarehouseConnectionError',
-            statusCode: 500, // TODO: is this a server error? could be credentials
+            statusCode: 400,
             data: {},
         });
     }
 }
 
 export class WarehouseQueryError extends LightdashError {
-    constructor(message: string) {
+    constructor(message: string, data: { [key: string]: AnyType } = {}) {
         super({
             message,
             name: 'WarehouseQueryError',
-            statusCode: 500, // TODO: is this a server error? usually syntax error
-            data: {},
+            statusCode: 400,
+            data,
         });
     }
 }
 
 export class SmptError extends LightdashError {
-    constructor(message: string, data: { [key: string]: any } = {}) {
+    constructor(message: string, data: { [key: string]: AnyType } = {}) {
         super({
             message,
             name: 'SmptError',
@@ -316,3 +318,87 @@ export class AlreadyExistsError extends LightdashError {
         });
     }
 }
+
+export class MissingConfigError extends LightdashError {
+    constructor(message: string) {
+        super({
+            message,
+            name: 'MissingConfigError',
+            statusCode: 422,
+            data: {},
+        });
+    }
+}
+
+export class NotEnoughResults extends LightdashError {
+    constructor(message: string) {
+        super({
+            message,
+            name: 'NotEnoughResults',
+            statusCode: 406,
+            data: {},
+        });
+    }
+}
+
+export class KnexPaginationError extends LightdashError {
+    constructor(message: string) {
+        super({
+            message,
+            name: 'KnexPaginationError',
+            statusCode: 422,
+            data: {},
+        });
+    }
+}
+
+export class SlackInstallationNotFoundError extends LightdashError {
+    constructor(message: string = 'Could not find slack installation') {
+        super({
+            message,
+            name: 'SlackInstallationNotFoundError',
+            statusCode: 404,
+            data: {},
+        });
+    }
+}
+
+export class UnexpectedGoogleSheetsError extends LightdashError {
+    constructor(
+        message = 'Unexpected error in Google sheets client',
+        data: { [key: string]: AnyType } = {},
+    ) {
+        super({
+            message,
+            name: 'UnexpectedGoogleSheetsError',
+            statusCode: 400,
+            data,
+        });
+    }
+}
+
+export class GoogleSheetsTransientError extends LightdashError {
+    constructor(
+        message = 'Unexpected error in Google Sheets API',
+        data: { [key: string]: AnyType } = {},
+    ) {
+        super({
+            message,
+            name: 'GoogleSheetsTransientError',
+            statusCode: 500,
+            data,
+        });
+    }
+}
+export class NotImplementedError extends LightdashError {
+    constructor(message = 'Not implemented') {
+        super({
+            message,
+            name: 'NotImplemented',
+            statusCode: 501,
+            data: {},
+        });
+    }
+}
+export const getErrorMessage = (e: unknown) =>
+    e instanceof Error ? e.message : `Unknown ${typeof e} error`;

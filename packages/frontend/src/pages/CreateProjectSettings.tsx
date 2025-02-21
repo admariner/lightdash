@@ -1,52 +1,49 @@
-import React, { FC } from 'react';
-import { useQueryClient } from 'react-query';
-import { useHistory, useParams } from 'react-router-dom';
-import Page from '../components/common/Page/Page';
+import { Stack, Text, Title } from '@mantine/core';
+import { useQueryClient } from '@tanstack/react-query';
+import { type FC } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import PageSpinner from '../components/PageSpinner';
 import ProjectTablesConfiguration from '../components/ProjectTablesConfiguration/ProjectTablesConfiguration';
-import { useApp } from '../providers/AppProvider';
-import { Subtitle, Title } from './CreateProject.styles';
+import Page from '../components/common/Page/Page';
+import useApp from '../providers/App/useApp';
 
 const CreateProjectSettings: FC = () => {
     const { projectUuid } = useParams<{ projectUuid: string }>();
     const queryClient = useQueryClient();
-    const history = useHistory();
+    const navigate = useNavigate();
     const { health } = useApp();
-    if (health.isLoading) {
+    if (health.isInitialLoading) {
         return <PageSpinner />;
     }
 
     const onSuccess = async () => {
         await queryClient.invalidateQueries(['health']);
-        await queryClient.refetchQueries(['organisation']);
-        history.push({
-            pathname: `/projects/${projectUuid}/home`,
-        });
+        await queryClient.refetchQueries(['organization']);
+        await navigate(`/projects/${projectUuid}/home`);
     };
 
     return (
-        <Page>
-            <div
-                style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    width: '800px',
-                    paddingTop: 60,
-                }}
-            >
-                <Title marginBottom>
-                    Your project has connected successfully! 🎉{' '}
-                </Title>
-                <Subtitle>
-                    Before you start exploring your data, pick the dbt models
-                    you want to appear as tables in Lightdash. You can always
-                    adjust this in your project settings later.
-                </Subtitle>
-                <ProjectTablesConfiguration
-                    projectUuid={projectUuid}
-                    onSuccess={onSuccess}
-                />
-            </div>
+        <Page withFixedContent withPaddedContent>
+            <Stack pt={60}>
+                <Stack spacing="xxs">
+                    <Title order={3} fw={500}>
+                        Your project has connected successfully! 🎉{' '}
+                    </Title>
+
+                    <Text color="dimmed">
+                        Before you start exploring your data, pick the dbt
+                        models you want to appear as tables in Lightdash. You
+                        can always adjust this in your project settings later.
+                    </Text>
+                </Stack>
+
+                {!!projectUuid && (
+                    <ProjectTablesConfiguration
+                        projectUuid={projectUuid}
+                        onSuccess={onSuccess}
+                    />
+                )}
+            </Stack>
         </Page>
     );
 };

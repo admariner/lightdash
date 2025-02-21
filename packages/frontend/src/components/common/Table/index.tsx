@@ -1,23 +1,29 @@
-import { ComponentProps, FC } from 'react';
+import { useMantineTheme } from '@mantine/core';
+import { type ComponentProps, type FC } from 'react';
+import {
+    ExploreEmptyQueryState,
+    ExploreIdleState,
+    ExploreLoadingState,
+} from '../../Explorer/ResultsCard/ExplorerResultsNonIdealStates';
 import ScrollableTable from './ScrollableTable';
-import * as States from './States';
 import { TableContainer } from './Table.styles';
 import TablePagination from './TablePagination';
 import { TableProvider } from './TableProvider';
 
 type Props = ComponentProps<typeof TableProvider> & {
     status: 'idle' | 'loading' | 'success' | 'error';
-    loadingState?: FC;
-    idleState?: FC;
-    emptyState?: FC;
+    loadingState?: FC<React.PropsWithChildren<{}>>;
+    idleState?: FC<React.PropsWithChildren<{}>>;
+    emptyState?: FC<React.PropsWithChildren<{}>>;
     className?: string;
     minimal?: boolean;
+    showSubtotals?: boolean;
     $shouldExpand?: boolean;
     $padding?: number;
     'data-testid'?: string;
 };
 
-const Table: FC<Props> = ({
+const Table: FC<React.PropsWithChildren<Props>> = ({
     $shouldExpand,
     $padding,
     status,
@@ -26,29 +32,37 @@ const Table: FC<Props> = ({
     emptyState,
     className,
     minimal = false,
+    showSubtotals = true,
     'data-testid': dataTestId,
     ...rest
 }) => {
-    const LoadingState = loadingState || States.LoadingState;
-    const IdleState = idleState || States.IdleState;
-    const EmptyState = emptyState || States.EmptyState;
+    const theme = useMantineTheme();
+    const LoadingState = loadingState || ExploreLoadingState;
+    const IdleState = idleState || ExploreIdleState;
+    const EmptyState = emptyState || ExploreEmptyQueryState;
 
     return (
         <TableProvider {...rest}>
             <TableContainer
-                className={`sentry-block fs-block cohere-block${
+                className={`sentry-block ph-no-capture ${
                     className ? ` ${className}` : ''
                 }`}
                 $shouldExpand={$shouldExpand}
                 $padding={$padding}
                 data-testid={dataTestId}
+                $tableFont={theme.other.tableFont}
             >
-                <ScrollableTable minimal={minimal} />
+                <ScrollableTable
+                    minimal={minimal}
+                    showSubtotals={showSubtotals}
+                />
+
                 {status === 'loading' && <LoadingState />}
                 {status === 'idle' && <IdleState />}
                 {status === 'success' && rest.data.length === 0 && (
                     <EmptyState />
                 )}
+
                 <TablePagination />
             </TableContainer>
         </TableProvider>

@@ -1,6 +1,10 @@
 import { Ability } from '@casl/ability';
-import { ApiError, LightdashUserWithAbilityRules } from '@lightdash/common';
-import { useQuery } from 'react-query';
+import {
+    type ApiError,
+    type LightdashUserWithAbilityRules,
+    type PossibleAbilities,
+} from '@lightdash/common';
+import { useQuery } from '@tanstack/react-query';
 import { lightdashApi } from '../../api';
 
 export type UserWithAbility = LightdashUserWithAbilityRules & {
@@ -15,13 +19,13 @@ const getUserState = async (): Promise<UserWithAbility> => {
 
     return {
         ...user,
-        ability: new Ability(user.abilityRules),
+        ability: new Ability<PossibleAbilities>(user.abilityRules),
     };
 };
 
 const useUser = (isAuthenticated: boolean) => {
     return useQuery<UserWithAbility, ApiError>({
-        queryKey: 'user',
+        queryKey: ['user'],
         queryFn: getUserState,
         enabled: isAuthenticated,
         retry: false,

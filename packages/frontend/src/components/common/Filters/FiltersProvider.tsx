@@ -1,56 +1,75 @@
-import { FilterableField, FilterRule, WeekDay } from '@lightdash/common';
-import React, { createContext, FC, useCallback, useContext } from 'react';
+import {
+    isField,
+    type DashboardFilters,
+    type FilterRule,
+    type FilterableItem,
+    type WeekDay,
+} from '@lightdash/common';
+import { type PopoverProps } from '@mantine/core';
+import { useCallback, type ReactNode } from 'react';
+import { v4 as uuid4 } from 'uuid';
+import Context, { type DefaultFieldsMap } from './context';
 
-export type FieldWithSuggestions = FilterableField & {
-    suggestions?: string[];
-};
-
-export type FieldsWithSuggestions = Record<string, FieldWithSuggestions>;
-
-type FiltersContext = {
+type Props<T extends DefaultFieldsMap> = {
     projectUuid?: string;
-    fieldsMap: FieldsWithSuggestions;
-    startOfWeek?: WeekDay | null;
-    getField: (filterRule: FilterRule) => FieldWithSuggestions | undefined;
+    itemsMap?: T;
+    baseTable?: string;
+    startOfWeek?: WeekDay;
+    dashboardFilters?: DashboardFilters;
+    popoverProps?: Omit<PopoverProps, 'children'>;
+    children?: ReactNode;
 };
 
-const Context = createContext<FiltersContext | undefined>(undefined);
-
-type Props = {
-    projectUuid?: string;
-    fieldsMap?: Record<string, FieldWithSuggestions>;
-    startOfWeek?: WeekDay | null;
-};
-
-export const FiltersProvider: FC<Props> = ({
+const FiltersProvider = <T extends DefaultFieldsMap = DefaultFieldsMap>({
     projectUuid,
-    fieldsMap = {},
+    itemsMap = {} as T,
+    baseTable,
     startOfWeek,
+    dashboardFilters,
+    popoverProps,
     children,
-}) => {
+}: Props<T>) => {
     const getField = useCallback(
         (filterRule: FilterRule) => {
-            if (fieldsMap) {
-                return fieldsMap[filterRule.target.fieldId];
+            if (itemsMap) {
+                return itemsMap[filterRule.target.fieldId];
             }
         },
-        [fieldsMap],
+        [itemsMap],
+    );
+    const getAutocompleteFilterGroup = useCallback(
+        (filterId: string, item: FilterableItem) => {
+            if (!dashboardFilters || !isField(item)) {
+                return undefined;
+            }
+            return {
+                id: uuid4(),
+                and: dashboardFilters.dimensions.filter(
+                    (dimensionFilterRule) => {
+                        const isNotSelectedFilter =
+                            dimensionFilterRule.id !== filterId;
+                        return isNotSelectedFilter;
+                    },
+                ),
+            };
+        },
+        [dashboardFilters],
     );
     return (
         <Context.Provider
-            value={{ projectUuid, fieldsMap, startOfWeek, getField }}
+            value={{
+                projectUuid,
+                itemsMap,
+                startOfWeek,
+                baseTable,
+                getField,
+                getAutocompleteFilterGroup,
+                popoverProps,
+            }}
         >
             {children}
         </Context.Provider>
     );
 };
 
-export function useFiltersContext(): FiltersContext {
-    const context = useContext(Context);
-    if (context === undefined) {
-        throw new Error(
-            'useFiltersContext must be used within a FiltersProvider',
-        );
-    }
-    return context;
-}
+export default FiltersProvider;

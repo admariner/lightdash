@@ -1,55 +1,68 @@
-import { Classes, Collapse, H5, Intent, Radio, Text } from '@blueprintjs/core';
 import { subject } from '@casl/ability';
 import { hasIntersection, TableSelectionType } from '@lightdash/common';
-import React, { FC, useEffect, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import {
+    Anchor,
+    Box,
+    Button,
+    Collapse,
+    Flex,
+    Highlight,
+    Loader,
+    MultiSelect,
+    Radio,
+    ScrollArea,
+    Stack,
+    Text,
+    Title,
+} from '@mantine/core';
+import { useForm, zodResolver } from '@mantine/form';
+import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
 import { useToggle } from 'react-use';
+import { z } from 'zod';
 import { useExplores } from '../../hooks/useExplores';
 import {
     useProjectTablesConfiguration,
     useUpdateProjectTablesConfiguration,
 } from '../../hooks/useProjectTablesConfiguration';
-import { useApp } from '../../providers/AppProvider';
-import { useTracking } from '../../providers/TrackingProvider';
+import { useAbilityContext } from '../../providers/Ability/useAbilityContext';
+import useApp from '../../providers/App/useApp';
+import useTracking from '../../providers/Tracking/useTracking';
 import { EventName } from '../../types/Events';
-import { useAbilityContext } from '../common/Authorization';
+import { SettingsGridCard } from '../common/Settings/SettingsCard';
 import DocumentationHelpButton from '../DocumentationHelpButton';
-import Form from '../ReactHookForm/Form';
-import MultiSelect from '../ReactHookForm/MultiSelect';
-import RadioGroup from '../ReactHookForm/RadioGroup';
-import {
-    CardWrapper,
-    LeftPanel,
-    ListTrigger,
-    ListWrapper,
-    RightPanel,
-    SaveButton,
-    TextP,
-} from './ProjectTablesConfiguration.styles';
 
-type FormData = {
-    type: TableSelectionType;
-    tags: string[];
-    names: string[];
-};
+const validationSchema = z.object({
+    type: z.nativeEnum(TableSelectionType),
+    tags: z.array(z.string()),
+    names: z.array(z.string()),
+});
 
-const ProjectTablesConfiguration: FC<{
+type FormValues = z.infer<typeof validationSchema>;
+
+type Props = {
     projectUuid: string;
     onSuccess?: () => void;
-}> = ({ projectUuid, onSuccess }) => {
+};
+
+const ProjectTablesConfiguration: FC<Props> = ({ projectUuid, onSuccess }) => {
     const { track } = useTracking();
     const { user } = useApp();
     const ability = useAbilityContext();
     const [isListOpen, toggleList] = useToggle(false);
+    const [search, setSearch] = useState('');
 
-    const { data: explores, isLoading: isLoadingExplores } =
+    const { data: explores, isInitialLoading: isLoadingExplores } =
         useExplores(projectUuid);
-    const { data, isLoading } = useProjectTablesConfiguration(projectUuid);
+
+    const { data: tablesConfig, isInitialLoading: isLoadingTablesConfig } =
+        useProjectTablesConfiguration(projectUuid);
+
     const {
         mutate: update,
         isLoading: isSaving,
         isSuccess,
     } = useUpdateProjectTablesConfiguration(projectUuid);
+
     const canUpdateTableConfiguration = ability.can(
         'update',
         subject('Project', {
@@ -58,25 +71,27 @@ const ProjectTablesConfiguration: FC<{
         }),
     );
     const disabled =
-        isLoading ||
+        isLoadingTablesConfig ||
         isSaving ||
         isLoadingExplores ||
         !canUpdateTableConfiguration;
-    const methods = useForm<FormData>({
-        defaultValues: {
+
+    const form = useForm<FormValues>({
+        initialValues: {
             type: TableSelectionType.ALL,
             tags: [],
             names: [],
         },
+        validate: zodResolver(validationSchema),
     });
-    const typeValue = methods.watch('type', TableSelectionType.ALL);
-    const tagsValue = methods.watch('tags', []);
-    const namesValue = methods.watch('names', []);
 
     const modelsIncluded = useMemo<string[]>(() => {
         if (!explores) {
             return [];
         }
+        const typeValue = form.values.type || TableSelectionType.ALL;
+        const tagsValue = form.values.tags || [];
+        const namesValue = form.values.names || [];
         if (typeValue === TableSelectionType.ALL) {
             return explores.map(({ name }) => name);
         }
@@ -96,7 +111,7 @@ const ProjectTablesConfiguration: FC<{
             );
         }
         return [];
-    }, [tagsValue, namesValue, typeValue, explores]);
+    }, [form.values, explores]);
 
     const availableTags = useMemo<string[]>(
         () =>
@@ -109,25 +124,29 @@ const ProjectTablesConfiguration: FC<{
         [explores],
     );
 
+    const handleResetSearch = useCallback(() => {
+        setTimeout(() => setSearch(() => ''), 0);
+    }, [setSearch]);
+
     useEffect(() => {
-        if (data) {
-            methods.setValue('type', data.tableSelection.type);
-            methods.setValue(
-                'tags',
-                data.tableSelection.type === TableSelectionType.WITH_TAGS &&
-                    data.tableSelection.value
-                    ? data.tableSelection.value
-                    : [],
-            );
-            methods.setValue(
-                'names',
-                data.tableSelection.type === TableSelectionType.WITH_NAMES &&
-                    data.tableSelection.value
-                    ? data.tableSelection.value
-                    : [],
-            );
-        }
-    }, [methods, data]);
+        if (!tablesConfig) return;
+
+        const { type, value } = tablesConfig.tableSelection;
+
+        const getValueBasedOnType = (selectionType: TableSelectionType) =>
+            type === selectionType && value ? value : [];
+
+        const initialValues = {
+            type: type,
+            tags: getValueBasedOnType(TableSelectionType.WITH_TAGS),
+            names: getValueBasedOnType(TableSelectionType.WITH_NAMES),
+        };
+
+        form.setInitialValues(initialValues);
+        form.setValues(initialValues);
+
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tablesConfig]);
 
     useEffect(() => {
         if (isSuccess && onSuccess) {
@@ -135,10 +154,13 @@ const ProjectTablesConfiguration: FC<{
         }
     }, [isSuccess, onSuccess]);
 
-    const onSubmit = async (formData: FormData) => {
+    const handleSubmit = form.onSubmit(async (formData) => {
+        if (!form.isValid()) return;
+
         track({
             name: EventName.UPDATE_PROJECT_TABLES_CONFIGURATION_BUTTON_CLICKED,
         });
+
         let value: string[] | null = null;
         if (
             formData.type === TableSelectionType.WITH_TAGS &&
@@ -158,118 +180,219 @@ const ProjectTablesConfiguration: FC<{
                 value,
             },
         });
-    };
+    });
 
     return (
-        <Form
-            name="project_table_configuration"
-            methods={methods}
-            onSubmit={onSubmit}
-            disableSubmitOnEnter
-        >
-            <CardWrapper elevation={1}>
-                <LeftPanel>
-                    <H5>Table selection</H5>
-                    <TextP>
+        <form name="project_table_configuration" onSubmit={handleSubmit}>
+            <SettingsGridCard>
+                <div>
+                    <Title order={5}>Table selection</Title>
+                    <Text color="gray.6" my={'xs'}>
                         You have selected <b>{modelsIncluded.length}</b> models{' '}
                         {modelsIncluded.length > 0 && (
-                            <ListTrigger
-                                role="button"
-                                tabIndex={0}
+                            <Anchor
+                                size="sm"
+                                component="button"
                                 onClick={toggleList}
                             >
                                 ({isListOpen ? 'hide' : 'show'} list)
-                            </ListTrigger>
+                            </Anchor>
                         )}
-                    </TextP>
-                    <Collapse isOpen={isListOpen}>
-                        <ListWrapper className={Classes.ELEVATION_0}>
+                    </Text>
+                    <Collapse in={isListOpen}>
+                        <ScrollArea h={180}>
                             {modelsIncluded.map((name) => (
-                                <Text key={name} title={name} ellipsize>
+                                <Text
+                                    key={name}
+                                    title={name}
+                                    truncate
+                                    color="gray.6"
+                                >
                                     {name}
                                 </Text>
                             ))}
-                        </ListWrapper>
+                        </ScrollArea>
                     </Collapse>
-                </LeftPanel>
-                <RightPanel>
-                    <RadioGroup
+                </div>
+
+                <div>
+                    <Radio.Group
                         name="type"
                         label="Table selection"
-                        rules={{
-                            required: 'Required field',
-                        }}
-                        disabled={disabled}
-                        defaultValue={TableSelectionType.ALL}
+                        withAsterisk
+                        {...form.getInputProps('type')}
                     >
-                        <Radio
-                            label="Show entire project"
-                            value={TableSelectionType.ALL}
-                        />
-                        <TextP>
-                            Show all of the models in your dbt project in
-                            Lightdash.
-                        </TextP>
-                        <Radio
-                            labelElement={
-                                <>
-                                    Show models with any of these tags{' '}
-                                    <DocumentationHelpButton url="https://docs.getdbt.com/reference/resource-configs/tags#examples" />
-                                </>
-                            }
-                            value={TableSelectionType.WITH_TAGS}
-                        />
-                        <TextP>
-                            Write a list of tags you want to include, separated
-                            by commas.
-                        </TextP>
-                        {typeValue === TableSelectionType.WITH_TAGS && (
-                            <MultiSelect
-                                name="tags"
-                                label="Tags"
-                                rules={{
-                                    required: 'Required field',
-                                }}
-                                items={availableTags}
+                        <Stack mt={'md'} spacing={'md'}>
+                            <Radio
+                                value={TableSelectionType.ALL}
+                                label="Show entire project"
+                                description="Show all of the models in your dbt project in Lightdash."
                                 disabled={disabled}
-                                placeholder="e.g lightdash, prod"
                             />
-                        )}
 
-                        <Radio
-                            label="Show models in this list"
-                            value={TableSelectionType.WITH_NAMES}
-                        />
-                        <TextP>
-                            Write a list of models you want to include,
-                            separated by commas.
-                        </TextP>
-                        {typeValue === TableSelectionType.WITH_NAMES && (
-                            <MultiSelect
-                                name="names"
-                                label="Names"
-                                rules={{
-                                    required: 'Required field',
-                                }}
-                                items={(explores || []).map(({ name }) => name)}
+                            <Box>
+                                <Radio
+                                    value={TableSelectionType.WITH_TAGS}
+                                    label={
+                                        <>
+                                            Show models with any of these tags{' '}
+                                            <DocumentationHelpButton href="https://docs.getdbt.com/reference/resource-configs/tags#examples" />
+                                        </>
+                                    }
+                                    description="Write a list of tags you want to include, separated by commas. Virtual views are included by default."
+                                    disabled={disabled}
+                                />
+
+                                {form.values.type ===
+                                    TableSelectionType.WITH_TAGS && (
+                                    <MultiSelect
+                                        ml={'xxl'}
+                                        size={'xs'}
+                                        mt={'xs'}
+                                        name="tags"
+                                        label="Tags"
+                                        required
+                                        data={availableTags}
+                                        disabled={
+                                            disabled ||
+                                            availableTags.length === 0
+                                        }
+                                        placeholder="e.g lightdash, prod"
+                                        searchable
+                                        clearSearchOnChange={false}
+                                        searchValue={search}
+                                        onSearchChange={setSearch}
+                                        itemComponent={({ label, ...others }) =>
+                                            others.disabled ? (
+                                                <Text
+                                                    color="dimmed"
+                                                    {...others}
+                                                >
+                                                    {label}
+                                                </Text>
+                                            ) : (
+                                                <Highlight
+                                                    highlight={search}
+                                                    {...others}
+                                                >
+                                                    {label}
+                                                </Highlight>
+                                            )
+                                        }
+                                        nothingFound={
+                                            isLoadingTablesConfig
+                                                ? 'Loading...'
+                                                : 'No results found'
+                                        }
+                                        rightSection={
+                                            isLoadingTablesConfig ? (
+                                                <Loader
+                                                    size="xs"
+                                                    color="gray"
+                                                />
+                                            ) : null
+                                        }
+                                        onDropdownClose={() => {
+                                            handleResetSearch();
+                                        }}
+                                        {...form.getInputProps('tags')}
+                                        error={
+                                            availableTags.length === 0
+                                                ? 'Your dbt project has no tags available'
+                                                : undefined
+                                        }
+                                    />
+                                )}
+                            </Box>
+                            <Box>
+                                <Radio
+                                    value={TableSelectionType.WITH_NAMES}
+                                    label="Show models in this list"
+                                    description="Write a list of models you want to include, separated by commas. Virtual views are included by default."
+                                    disabled={disabled}
+                                />
+
+                                {form.values.type ===
+                                    TableSelectionType.WITH_NAMES && (
+                                    <MultiSelect
+                                        ml={'xxl'}
+                                        size={'xs'}
+                                        mt={'xs'}
+                                        name="names"
+                                        label="Names"
+                                        required
+                                        data={(explores || []).map(
+                                            ({ name }) => name,
+                                        )}
+                                        disabled={disabled}
+                                        placeholder="e.g users, orders"
+                                        searchable
+                                        clearSearchOnChange={false}
+                                        searchValue={search}
+                                        onSearchChange={setSearch}
+                                        itemComponent={({ label, ...others }) =>
+                                            others.disabled ? (
+                                                <Text
+                                                    color="dimmed"
+                                                    {...others}
+                                                >
+                                                    {label}
+                                                </Text>
+                                            ) : (
+                                                <Highlight
+                                                    highlight={search}
+                                                    {...others}
+                                                >
+                                                    {label}
+                                                </Highlight>
+                                            )
+                                        }
+                                        nothingFound={
+                                            isLoadingTablesConfig
+                                                ? 'Loading...'
+                                                : 'No results found'
+                                        }
+                                        rightSection={
+                                            isLoadingTablesConfig ? (
+                                                <Loader
+                                                    size="xs"
+                                                    color="gray"
+                                                />
+                                            ) : null
+                                        }
+                                        onDropdownClose={() => {
+                                            handleResetSearch();
+                                        }}
+                                        {...form.getInputProps('names')}
+                                    />
+                                )}
+                            </Box>
+                        </Stack>
+                    </Radio.Group>
+
+                    {canUpdateTableConfiguration && (
+                        <Flex justify="flex-end" gap="sm" mt="xl">
+                            {form.isDirty() && !disabled && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => form.reset()}
+                                >
+                                    Cancel
+                                </Button>
+                            )}
+
+                            <Button
+                                type="submit"
+                                loading={isSaving}
                                 disabled={disabled}
-                                placeholder="e.g users, orders"
-                            />
-                        )}
-                    </RadioGroup>
-                </RightPanel>
-            </CardWrapper>
-
-            {canUpdateTableConfiguration && (
-                <SaveButton
-                    type="submit"
-                    intent={Intent.PRIMARY}
-                    text="Save changes"
-                    loading={isSaving}
-                    disabled={disabled}
-                />
-            )}
-        </Form>
+                            >
+                                Save changes
+                            </Button>
+                        </Flex>
+                    )}
+                </div>
+            </SettingsGridCard>
+        </form>
     );
 };
 

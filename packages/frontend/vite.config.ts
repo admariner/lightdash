@@ -1,54 +1,125 @@
 import reactPlugin from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
-import eslintPlugin from 'vite-plugin-eslint';
+import { compression } from 'vite-plugin-compression2';
+import dts from 'vite-plugin-dts';
+import monacoEditorPlugin from 'vite-plugin-monaco-editor';
 import svgrPlugin from 'vite-plugin-svgr';
-import tsconfigPathsPlugin from 'vite-tsconfig-paths';
+import { defineConfig } from 'vitest/config';
 
-const mapManualChunks = (mapping: Record<string, string>) => (id: string) => {
-    for (const [match, chunk] of Object.entries(mapping)) {
-        if (id.includes(match)) {
-            return chunk;
-        }
-    }
-};
+const isLib = process.env.VITE_LIB === 'true';
 
 export default defineConfig({
+    publicDir: isLib ? false : 'public',
+    define: {
+        __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
+    },
     plugins: [
-        reactPlugin(),
         svgrPlugin(),
-        tsconfigPathsPlugin(),
-        {
-            // do not fail on serve (i.e. local development)
-            ...eslintPlugin({
-                failOnWarning: false,
-                failOnError: false,
-            }),
-            apply: 'serve',
-            enforce: 'post',
-        },
+        reactPlugin(),
+        compression({
+            include: [/\.(js)$/, /\.(css)$/, /\.js\.map$/],
+            filename: '[path][base].gzip',
+        }),
+
+        ...(isLib
+            ? [
+                  dts({
+                      rollupTypes: true,
+                  }),
+              ]
+            : [
+                  monacoEditorPlugin({
+                      forceBuildCDN: true,
+                      languageWorkers: ['json'],
+                  }),
+              ]),
     ],
-    // css: {
-    //     devSourcemap: true,
-    // },
+    css: {
+        transformer: 'lightningcss',
+    },
+    optimizeDeps: {
+        exclude: ['@lightdash/common'],
+    },
     build: {
-        outDir: 'build',
-        // sourcemap: true,
-        target: 'es2015',
+        outDir: isLib ? 'dist' : 'build',
+        target: 'es2020',
         minify: true,
-        rollupOptions: {
-            output: {
-                manualChunks: mapManualChunks({
-                    '@blueprintjs/icons': 'blueprint-icons-vendor',
-                    '@blueprintjs/': 'blueprint-vendor',
-                    '@mantine': 'mantine-vendor',
-                    'highlight.js': 'highlight-vendor',
-                    echarts: 'echarts-vendor',
-                    '@mapbox/': 'mapbox-vendor',
-                    rudder: 'rudder-vendor',
-                    sentry: 'sentry-vendor',
-                }),
-            },
-        },
+        sourcemap: true,
+        ...(isLib
+            ? {
+                  lib: {
+                      entry: './src/sdk/index.tsx',
+                      name: '@lightdash/frontend',
+                      formats: ['es', 'cjs'],
+                      fileName: 'frontend',
+                  },
+                  rollupOptions: {
+                      external: [
+                          'react/jsx-runtime',
+                          'react-dom/jsx-runtime',
+                          'react/jsx-dev-runtime',
+                          'react-dom/jsx-dev-runtime',
+                          'react',
+                          'react-dom',
+                      ],
+                  },
+              }
+            : {
+                  rollupOptions: {
+                      output: {
+                          manualChunks: {
+                              react: [
+                                  'react',
+                                  'react-dom',
+                                  'react-router',
+                                  'react-hook-form',
+                                  'react-use',
+                                  // TODO: removed because of PNPM
+                                  // 'react-draggable',
+                                  '@hello-pangea/dnd',
+                                  '@tanstack/react-query',
+                                  '@tanstack/react-table',
+                                  '@tanstack/react-virtual',
+                              ],
+                              echarts: ['echarts'],
+                              vega: ['vega', 'vega-lite'],
+                              ace: ['ace-builds', 'react-ace/lib'],
+                              modules: [
+                                  // TODO: removed because of PNPM
+                                  // 'ajv',
+                                  // 'ajv-formats',
+                                  // 'liquidjs',
+                                  // 'pegjs',
+                                  'jspdf',
+                                  'lodash',
+                                  'colorjs.io',
+                                  'zod',
+                              ],
+                              thirdparty: [
+                                  '@sentry/react',
+                                  'rudder-sdk-js',
+                                  'posthog-js',
+                              ],
+                              uiw: [
+                                  '@uiw/react-markdown-preview',
+                                  '@uiw/react-md-editor',
+                              ],
+                              mantine: [
+                                  '@mantine/core',
+                                  '@mantine/dates',
+                                  '@mantine/form',
+                                  '@mantine/hooks',
+                                  '@mantine/notifications',
+                                  '@mantine/prism',
+                              ],
+                          },
+                      },
+                  },
+              }),
+    },
+    test: {
+        globals: true,
+        environment: 'jsdom',
+        setupFiles: './src/testing/vitest.setup.ts',
     },
     server: {
         port: 3000,
@@ -58,6 +129,10 @@ export default defineConfig({
         },
         proxy: {
             '/api': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+            },
+            '/slack/events': {
                 target: 'http://localhost:8080',
                 changeOrigin: true,
             },

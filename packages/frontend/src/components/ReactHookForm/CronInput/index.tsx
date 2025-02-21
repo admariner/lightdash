@@ -1,29 +1,45 @@
-import { FormGroup } from '@blueprintjs/core';
-import React, { FC, useCallback, useEffect, useState } from 'react';
+import { Group } from '@mantine/core';
+import {
+    useCallback,
+    useEffect,
+    useState,
+    type FC,
+    type PropsWithChildren,
+} from 'react';
 import {
     Controller,
-    ControllerRenderProps,
-    FieldValues,
     useFormContext,
+    type ControllerRenderProps,
+    type FieldValues,
 } from 'react-hook-form';
-import { InputWrapperProps } from '../InputWrapper';
-import {
-    Frequency,
-    getFrequencyCronExpression,
-    mapCronExpressionToFrequency,
-} from './cronInputUtils';
+import { type InputWrapperProps } from '../InputWrapper';
 import CustomInputs from './CustomInputs';
 import DailyInputs from './DailyInputs';
 import FrequencySelect from './FrequencySelect';
 import HourlyInputs from './HourlyInputs';
 import MonthlyInputs from './MonthlyInputs';
 import WeeklyInputs from './WeeklyInputs';
+import {
+    Frequency,
+    getFrequencyCronExpression,
+    mapCronExpressionToFrequency,
+} from './cronInputUtils';
 
-const CronInternalInputs: FC<
-    {
-        disabled: boolean | undefined;
-    } & ControllerRenderProps<FieldValues, string>
-> = ({ value, disabled, onChange, name }) => {
+// TODO: this type is a bit of a mess because this component is used
+// both in react-hook-form forms as well as mantine forms. If/when
+// we move away from one of them, this should get simplified.
+export const CronInternalInputs: FC<
+    PropsWithChildren<
+        {
+            disabled: boolean | undefined;
+            error?: string;
+            errors?: {
+                [x: string]: any;
+            };
+            onBlur?: () => void;
+        } & Omit<ControllerRenderProps<FieldValues, string>, 'ref' | 'onBlur'>
+    >
+> = ({ value, disabled, onChange, name, error, errors, children }) => {
     const [frequency, setFrequency] = useState<Frequency>(
         mapCronExpressionToFrequency(value),
     );
@@ -43,14 +59,12 @@ const CronInternalInputs: FC<
     );
 
     return (
-        <div>
-            <FormGroup className={'input-wrapper'}>
-                <FrequencySelect
-                    value={frequency}
-                    disabled={disabled}
-                    onChange={onFrequencyChange}
-                />
-            </FormGroup>
+        <Group spacing="sm" align="flex-start">
+            <FrequencySelect
+                value={frequency}
+                disabled={disabled}
+                onChange={onFrequencyChange}
+            />
             {frequency === Frequency.HOURLY && (
                 <HourlyInputs cronExpression={value} onChange={onChange} />
             )}
@@ -68,16 +82,22 @@ const CronInternalInputs: FC<
                     name={name}
                     cronExpression={value}
                     onChange={onChange}
+                    errors={errors}
+                    error={error}
                 />
             )}
-        </div>
+            {children}
+        </Group>
     );
 };
 
-export const CronInput: FC<
+const CronInput: FC<
     Pick<InputWrapperProps, 'disabled' | 'rules' | 'name' | 'defaultValue'>
 > = ({ name, rules, defaultValue, disabled }) => {
-    const { control } = useFormContext();
+    const {
+        control,
+        formState: { errors },
+    } = useFormContext();
     return (
         <Controller
             control={control}
@@ -85,7 +105,11 @@ export const CronInput: FC<
             rules={rules}
             defaultValue={defaultValue}
             render={({ field }) => (
-                <CronInternalInputs disabled={disabled} {...field} />
+                <CronInternalInputs
+                    disabled={disabled}
+                    {...field}
+                    errors={errors}
+                />
             )}
         />
     );

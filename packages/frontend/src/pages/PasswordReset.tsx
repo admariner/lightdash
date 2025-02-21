@@ -1,111 +1,135 @@
-import { Intent } from '@blueprintjs/core';
-import React, { FC } from 'react';
-import { useForm } from 'react-hook-form';
-import { useHistory, useParams } from 'react-router-dom';
+import {
+    Anchor,
+    Button,
+    Card,
+    Center,
+    Image,
+    PasswordInput,
+    Stack,
+    Text,
+    Title,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { type FC } from 'react';
+import { Link, useNavigate, useParams } from 'react-router';
+import PageSpinner from '../components/PageSpinner';
 import ErrorState from '../components/common/ErrorState';
 import Page from '../components/common/Page/Page';
-import PageSpinner from '../components/PageSpinner';
-import Form from '../components/ReactHookForm/Form';
 import {
     usePasswordResetLink,
     usePasswordResetMutation,
 } from '../hooks/usePasswordReset';
-import { useApp } from '../providers/AppProvider';
+import useApp from '../providers/App/useApp';
 import LightdashLogo from '../svgs/lightdash-black.svg';
-import {
-    CardWrapper,
-    FormLink,
-    FormWrapper,
-    Logo,
-    LogoWrapper,
-    PasswordInputField,
-    SubmitButton,
-    Subtitle,
-    Title,
-} from './PasswordRecovery.styles';
 
 type ResetPasswordForm = { password: string };
 
 const PasswordReset: FC = () => {
+    const navigate = useNavigate();
     const { code } = useParams<{ code: string }>();
-    const history = useHistory();
     const { health } = useApp();
-    const { isLoading, error } = usePasswordResetLink(code);
-    const resetMutation = usePasswordResetMutation();
-    const methods = useForm<ResetPasswordForm>({
-        mode: 'onSubmit',
+    const { isInitialLoading, error } = usePasswordResetLink(code);
+    const passwordResetMutation = usePasswordResetMutation();
+
+    const form = useForm<ResetPasswordForm>({
+        initialValues: {
+            password: '',
+        },
     });
 
-    const handleSubmit = (data: ResetPasswordForm) => {
-        resetMutation.mutate({
-            code,
-            newPassword: data.password,
-        });
-    };
-
-    if (health.isLoading || isLoading) {
+    if (health.isInitialLoading || isInitialLoading) {
         return <PageSpinner />;
     }
 
     return (
-        <Page isFullHeight>
-            <FormWrapper>
-                <LogoWrapper>
-                    <Logo src={LightdashLogo} alt="lightdash logo" />
-                </LogoWrapper>
-                <CardWrapper elevation={2}>
+        <Page title="Reset password" withCenteredContent withNavbar={false}>
+            {/* FIXME: use Mantine sizes for width */}
+            <Stack w={400} mt="4xl">
+                <Image
+                    src={LightdashLogo}
+                    alt="lightdash logo"
+                    width={130}
+                    mx="auto"
+                    my="lg"
+                />
+                <Card p="xl" radius="xs" withBorder shadow="xs">
                     {error ? (
                         <ErrorState error={error.error} hasMarginTop={false} />
                     ) : (
                         <>
-                            {!resetMutation.isSuccess ? (
+                            {!passwordResetMutation.isSuccess ? (
                                 <>
-                                    <Title>Reset your password</Title>
-                                    <Form
-                                        name="password_reset"
-                                        methods={methods}
-                                        onSubmit={handleSubmit}
+                                    <Title order={3} ta="center" mb="md">
+                                        Reset your password
+                                    </Title>
+                                    <form
+                                        name="password-reset"
+                                        onSubmit={form.onSubmit(
+                                            ({ password }) =>
+                                                code &&
+                                                passwordResetMutation.mutate({
+                                                    code,
+                                                    newPassword: password,
+                                                }),
+                                        )}
                                     >
-                                        <PasswordInputField
-                                            label="Password"
-                                            name="password"
-                                            placeholder="Enter a new password"
-                                            disabled={resetMutation.isLoading}
-                                            rules={{
-                                                required: 'Required field',
-                                            }}
-                                        />
+                                        <Stack spacing="lg">
+                                            <PasswordInput
+                                                label="Password"
+                                                name="password"
+                                                placeholder="Enter a new password"
+                                                disabled={
+                                                    passwordResetMutation.isLoading
+                                                }
+                                                required
+                                                {...form.getInputProps(
+                                                    'password',
+                                                )}
+                                            />
 
-                                        <SubmitButton
-                                            type="submit"
-                                            intent={Intent.PRIMARY}
-                                            text="Save"
-                                            loading={resetMutation.isLoading}
-                                        />
-                                        <FormLink href="/login">
-                                            Cancel
-                                        </FormLink>
-                                    </Form>
+                                            <Button
+                                                type="submit"
+                                                loading={
+                                                    passwordResetMutation.isLoading
+                                                }
+                                            >
+                                                Save
+                                            </Button>
+
+                                            <Center>
+                                                <Anchor
+                                                    component={Link}
+                                                    to="/login"
+                                                >
+                                                    Cancel
+                                                </Anchor>
+                                            </Center>
+                                        </Stack>
+                                    </form>
                                 </>
                             ) : (
                                 <>
-                                    <Title>Success! ✅</Title>
-                                    <Subtitle>
+                                    <Title order={3} ta="center" mb="md">
+                                        Success!
+                                    </Title>
+                                    <Text ta="center" mb="lg" color="dimmed">
                                         Your password has been successfully
                                         updated.
-                                        <br /> Use your new password to sign in.
-                                    </Subtitle>
-                                    <SubmitButton
-                                        onClick={() => history.push('/login')}
-                                        text="Log in"
-                                        intent={Intent.PRIMARY}
-                                    />
+                                        <br /> Use your new password to log in.
+                                    </Text>
+
+                                    <Button
+                                        fullWidth
+                                        onClick={() => navigate('/login')}
+                                    >
+                                        Log in
+                                    </Button>
                                 </>
                             )}
                         </>
                     )}
-                </CardWrapper>
-            </FormWrapper>
+                </Card>
+            </Stack>
         </Page>
     );
 };

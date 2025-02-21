@@ -1,39 +1,95 @@
-import { Icon } from '@blueprintjs/core';
-import { Tooltip2 } from '@blueprintjs/popover2';
 import {
-    AdditionalMetric,
-    Field,
     formatItemValue,
     friendlyName,
+    getFormattedWithFallback,
     getItemMap,
     isAdditionalMetric,
+    isCustomDimension,
     isDimension,
     isField,
     isNumericItem,
-    TableCalculation,
+    itemsInMetricQuery,
+    type AdditionalMetric,
+    type CustomDimension,
+    type Dimension,
+    type Field,
+    type ItemsMap,
+    type RawResultRow,
+    type ResultRow,
+    type ResultValue,
+    type TableCalculation,
 } from '@lightdash/common';
-import { useMemo } from 'react';
+import { Group, Tooltip } from '@mantine/core';
+import { IconExclamationCircle } from '@tabler/icons-react';
+import { type CellContext } from '@tanstack/react-table';
+import { Fragment, useMemo } from 'react';
+import { formatRowValueFromWarehouse } from '../components/DataViz/formatters/formatRowValueFromWarehouse';
+import MantineIcon from '../components/common/MantineIcon';
 import {
     TableHeaderBoldLabel,
     TableHeaderLabelContainer,
     TableHeaderRegularLabel,
 } from '../components/common/Table/Table.styles';
-import { columnHelper, TableColumn } from '../components/common/Table/types';
-import { useExplorerContext } from '../providers/ExplorerProvider';
-import useColumnTotals from './useColumnTotals';
+import {
+    columnHelper,
+    type TableColumn,
+} from '../components/common/Table/types';
+import useExplorerContext from '../providers/Explorer/useExplorerContext';
+import { useCalculateTotal } from './useCalculateTotal';
 import { useExplore } from './useExplore';
 
 export const getItemBgColor = (
-    item: Field | AdditionalMetric | TableCalculation,
+    item: Field | AdditionalMetric | TableCalculation | CustomDimension,
 ): string => {
-    let bgColor: string;
-
+    if (isCustomDimension(item)) return '#d2dbe9';
     if (isField(item) || isAdditionalMetric(item)) {
-        bgColor = isDimension(item) ? '#d2dbe9' : '#e4dad0';
+        return isDimension(item) ? '#d2dbe9' : '#e4dad0';
     } else {
-        bgColor = '#d2dfd7';
+        return '#d2dfd7';
     }
-    return bgColor;
+};
+
+export const formatCellContent = (
+    data?: { value: ResultValue },
+    item?:
+        | Field
+        | Dimension
+        | AdditionalMetric
+        | TableCalculation
+        | CustomDimension,
+) => {
+    if (!data) return '-';
+
+    const { value } = data;
+
+    if (typeof value?.formatted === 'string') {
+        const lines = value?.formatted.split('\\n') ?? [];
+        return lines.length > 1
+            ? lines.map((line, index, array) => (
+                  <Fragment key={index}>
+                      {line}
+                      {index < array.length - 1 && <br />}
+                  </Fragment>
+              ))
+            : getFormattedWithFallback(value);
+    }
+
+    if (value?.formatted === null && item) {
+        // Null formatting means the formatting was skipped by the backend
+        // so we need to handle formatting in the frontend based on the raw value
+        return formatItemValue(item, value?.raw);
+    }
+    return getFormattedWithFallback(value);
+};
+
+export const getFormattedValueCell = (
+    info: CellContext<ResultRow, { value: ResultValue }>,
+) => <span>{formatCellContent(info.getValue())}</span>;
+
+export const getValueCell = (info: CellContext<RawResultRow, string>) => {
+    const value = info.getValue();
+    const formatted = formatRowValueFromWarehouse(value);
+    return <span>{formatted}</span>;
 };
 
 export const useColumns = (): TableColumn[] => {
@@ -46,6 +102,10 @@ export const useColumns = (): TableColumn[] => {
     const tableCalculations = useExplorerContext(
         (context) =>
             context.state.unsavedChartVersion.metricQuery.tableCalculations,
+    );
+    const customDimensions = useExplorerContext(
+        (context) =>
+            context.state.unsavedChartVersion.metricQuery.customDimensions,
     );
     const additionalMetrics = useExplorerContext(
         (context) =>
@@ -62,27 +122,44 @@ export const useColumns = (): TableColumn[] => {
         refetchOnMount: false,
     });
 
+    const itemsMap = useMemo<ItemsMap | undefined>(() => {
+        if (exploreData) {
+            // Explore items for new columns and result items for existing columns with format overrides
+            return {
+                ...getItemMap(
+                    exploreData,
+                    additionalMetrics,
+                    tableCalculations,
+                    customDimensions,
+                ),
+                ...(resultsData?.fields || {}),
+            };
+        }
+    }, [
+        resultsData,
+        exploreData,
+        additionalMetrics,
+        tableCalculations,
+        customDimensions,
+    ]);
+
     const { activeItemsMap, invalidActiveItems } = useMemo<{
-        activeItemsMap: Record<string, Field | TableCalculation>;
+        activeItemsMap: ItemsMap;
         invalidActiveItems: string[];
     }>(() => {
-        if (exploreData) {
-            const allItemsMap = getItemMap(
-                exploreData,
-                additionalMetrics,
-                tableCalculations,
-            );
+        if (itemsMap) {
             return Array.from(activeFields).reduce<{
-                activeItemsMap: Record<string, Field | TableCalculation>;
+                activeItemsMap: ItemsMap;
                 invalidActiveItems: string[];
             }>(
                 (acc, key) => {
-                    return allItemsMap[key]
+                    const item = itemsMap?.[key];
+                    return item
                         ? {
                               ...acc,
                               activeItemsMap: {
                                   ...acc.activeItemsMap,
-                                  [key]: allItemsMap[key],
+                                  [key]: item,
                               },
                           }
                         : {
@@ -97,10 +174,14 @@ export const useColumns = (): TableColumn[] => {
             );
         }
         return { activeItemsMap: {}, invalidActiveItems: [] };
-    }, [additionalMetrics, exploreData, tableCalculations, activeFields]);
+    }, [itemsMap, activeFields]);
 
-    const totals = useColumnTotals({
-        resultsData,
+    const { data: totals } = useCalculateTotal({
+        metricQuery: resultsData?.metricQuery,
+        explore: exploreData?.baseTable,
+        fieldIds: resultsData
+            ? itemsInMetricQuery(resultsData.metricQuery)
+            : undefined,
         itemsMap: activeItemsMap,
     });
 
@@ -132,15 +213,16 @@ export const useColumns = (): TableColumn[] => {
                                 </>
                             ) : (
                                 <TableHeaderBoldLabel>
-                                    {item.displayName ||
+                                    {('displayName' in item &&
+                                        item.displayName) ||
                                         friendlyName(item.name)}
                                 </TableHeaderBoldLabel>
                             )}
                         </TableHeaderLabelContainer>
                     ),
-                    cell: (info) => info.getValue()?.value.formatted || '-',
+                    cell: getFormattedValueCell,
                     footer: () =>
-                        totals[fieldId]
+                        totals?.[fieldId]
                             ? formatItemValue(item, totals[fieldId])
                             : null,
                     meta: {
@@ -169,25 +251,27 @@ export const useColumns = (): TableColumn[] => {
                     {
                         id: fieldId,
                         header: () => (
-                            <TableHeaderLabelContainer>
-                                <Tooltip2
-                                    content="This field was not found in the dbt project."
+                            <Group spacing="two">
+                                <Tooltip
+                                    withinPortal
+                                    label="This field was not found in the dbt project."
                                     position="top"
                                 >
-                                    <Icon
-                                        icon="warning-sign"
-                                        intent="warning"
+                                    <MantineIcon
+                                        display="inline"
+                                        icon={IconExclamationCircle}
+                                        color="yellow"
                                     />
-                                </Tooltip2>
+                                </Tooltip>
 
                                 <TableHeaderBoldLabel
                                     style={{ marginLeft: 10 }}
                                 >
                                     {fieldId}
                                 </TableHeaderBoldLabel>
-                            </TableHeaderLabelContainer>
+                            </Group>
                         ),
-                        cell: (info) => info.getValue()?.value.formatted || '-',
+                        cell: getFormattedValueCell,
                         meta: {
                             isInvalidItem: true,
                         },

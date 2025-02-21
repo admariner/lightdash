@@ -1,3 +1,7 @@
+import { CartesianSeriesType, getItemMap } from '@lightdash/common';
+import { renderHook } from '@testing-library/react';
+import { describe, expect, test } from 'vitest';
+import useCartesianChartConfig from './useCartesianChartConfig';
 import {
     existingMixedSeries,
     expectedMixedSeriesMap,
@@ -10,6 +14,7 @@ import {
     multiPivotSeriesMapArgs,
     pivotSeriesMapArgs,
     simpleSeriesMapArgs,
+    useCartesianChartConfigParamsMock,
 } from './useCartesianChartConfig.mock';
 import {
     getExpectedSeriesMap,
@@ -51,7 +56,7 @@ describe('sortDimensions', () => {
         ];
         const sortedDimensions = sortDimensions(
             dimensionIds,
-            explore,
+            getItemMap(explore),
             columnOrder,
         );
         expect(sortedDimensions).toStrictEqual(dimensionIds);
@@ -70,7 +75,7 @@ describe('sortDimensions', () => {
         ];
         const sortedDimensions = sortDimensions(
             dimensionIds,
-            explore,
+            getItemMap(explore),
             columnOrder,
         );
         expect(sortedDimensions).toStrictEqual([
@@ -93,7 +98,7 @@ describe('sortDimensions', () => {
         ];
         const sortedDimensions = sortDimensions(
             dimensionIds,
-            explore,
+            getItemMap(explore),
             columnOrder,
         );
         expect(sortedDimensions).toStrictEqual([
@@ -108,7 +113,7 @@ describe('sortDimensions', () => {
         const columnOrder = ['dimension_string', 'dimension_timestamp'];
         const sortedDimensions = sortDimensions(
             dimensionIds,
-            explore,
+            getItemMap(explore),
             columnOrder,
         );
         expect(sortedDimensions).toStrictEqual([
@@ -174,5 +179,66 @@ describe('getSeriesGroupedByField', () => {
         expect(
             getSeriesGroupedByField(Object.values(mergedMixedSeries)),
         ).toStrictEqual(groupedMixedSeries);
+    });
+});
+
+describe('useCartesianChartConfig', () => {
+    test('should default series yAxisIndex to 0', () => {
+        const { result } = renderHook(
+            // @ts-expect-error partially mock params for hook
+            () => useCartesianChartConfig(useCartesianChartConfigParamsMock),
+        );
+
+        const series = result.current.validConfig!.eChartsConfig.series!;
+
+        expect(series.length).toBeGreaterThan(0);
+        series.forEach((serie) => expect(serie.yAxisIndex).toBe(0));
+    });
+
+    test('should set undefined yAxisIndex to 0', () => {
+        const seriesFromOldChart = [
+            {
+                type: CartesianSeriesType.BAR,
+                encode: {
+                    xRef: {
+                        field: 'orders_customer_id',
+                    },
+                    yRef: {
+                        field: 'orders_total_order_amount',
+                    },
+                },
+                yAxisIndex: 1,
+            },
+            {
+                type: CartesianSeriesType.BAR,
+                encode: {
+                    xRef: {
+                        field: 'orders_customer_id',
+                    },
+                    yRef: {
+                        field: 'orders_fulfillment_rate',
+                    },
+                },
+            },
+        ];
+
+        const { result } = renderHook(() =>
+            // @ts-expect-error partially mock params for hook
+            useCartesianChartConfig({
+                ...useCartesianChartConfigParamsMock,
+                initialChartConfig: {
+                    ...useCartesianChartConfigParamsMock.initialChartConfig,
+
+                    eChartsConfig: {
+                        series: seriesFromOldChart,
+                    },
+                },
+            }),
+        );
+
+        const series = result.current.validConfig!.eChartsConfig.series!;
+
+        expect(series[0].yAxisIndex).toBe(1);
+        expect(series[1].yAxisIndex).toBe(0);
     });
 });

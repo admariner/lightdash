@@ -1,48 +1,60 @@
-import { MenuItem2, MenuItem2Props } from '@blueprintjs/popover2';
-import React, { FC } from 'react';
-import { useHistory } from 'react-router-dom';
-import { EventData, useTracking } from '../../providers/TrackingProvider';
+import { Menu, UnstyledButton, type MenuItemProps } from '@mantine/core';
+import React, { type FC } from 'react';
+import { useNavigate } from 'react-router';
+import { type EventData } from '../../providers/Tracking/types';
+import useTracking from '../../providers/Tracking/useTracking';
 
-export interface LinkMenuItemProps extends MenuItem2Props {
-    href?: string;
+export interface LinkMenuItemProps extends MenuItemProps {
     trackingEvent?: EventData;
     target?: React.HTMLAttributeAnchorTarget;
     forceRefresh?: boolean;
+    href?: string;
+    disabled?: boolean;
+    onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
 }
 
-const LinkMenuItem: FC<LinkMenuItemProps> = ({
+const LinkMenuItem: FC<React.PropsWithChildren<LinkMenuItemProps>> = ({
     href,
     target,
     trackingEvent,
     forceRefresh = false,
+    disabled = false,
     onClick,
+    children,
     ...rest
 }) => {
-    const history = useHistory();
+    const navigate = useNavigate();
     const { track } = useTracking();
 
     return (
-        <MenuItem2
-            {...rest}
-            href={href}
+        <UnstyledButton
             target={target}
-            onClick={(e) => {
-                if (
-                    !forceRefresh &&
-                    !e.ctrlKey &&
-                    !e.metaKey &&
-                    target !== '_blank' &&
-                    href
-                ) {
-                    e.preventDefault();
-                    history.push(href);
-                }
+            component="a"
+            href={disabled ? undefined : href}
+        >
+            <Menu.Item
+                {...rest}
+                disabled={disabled}
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                    if (
+                        !forceRefresh &&
+                        !e.ctrlKey &&
+                        !e.metaKey &&
+                        target !== '_blank' &&
+                        href
+                    ) {
+                        e.preventDefault();
+                        void navigate(href);
+                    }
 
-                onClick?.(e);
+                    onClick?.(e);
 
-                if (trackingEvent) track(trackingEvent);
-            }}
-        />
+                    if (trackingEvent) track(trackingEvent);
+                }}
+            >
+                {children}
+            </Menu.Item>
+        </UnstyledButton>
     );
 };
 

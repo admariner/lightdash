@@ -1,70 +1,77 @@
 import {
+    assertUnreachable,
+    getErrorMessage,
+    type OrganizationMemberProfile,
+    type Space,
+} from '@lightdash/common';
+import {
     Button,
-    Dialog,
-    DialogBody,
-    DialogFooter,
-    IconName,
-    Intent,
-} from '@blueprintjs/core';
-import { assertUnreachable, Space } from '@lightdash/common';
-import { FC, useState } from 'react';
-import { useForm, UseFormReturn } from 'react-hook-form';
-import { useHistory } from 'react-router-dom';
+    Group,
+    MantineProvider,
+    Modal,
+    Title,
+    type DefaultMantineColor,
+} from '@mantine/core';
+import { useForm, zodResolver, type UseFormReturnType } from '@mantine/form';
+import { type Icon } from '@tabler/icons-react';
+import { useState, type FC } from 'react';
+import { useNavigate } from 'react-router';
+import { z } from 'zod';
 import useToaster from '../../../hooks/toaster/useToaster';
+import { useOrganizationUsers } from '../../../hooks/useOrganizationUsers';
 import {
     useCreateMutation,
-    useDeleteMutation,
     useSpace,
+    useSpaceDeleteMutation,
     useUpdateMutation,
 } from '../../../hooks/useSpaces';
-import Form from '../../ReactHookForm/Form';
-import SimpleButton from '../SimpleButton';
-
-import CreateSpaceModalContent, {
-    CreateModalStep,
-} from './CreateSpaceModalContent';
+import MantineIcon from '../MantineIcon';
+import { SpacePrivateAccessType } from '../ShareSpaceModal/ShareSpaceSelect';
+import CreateSpaceModalContent from './CreateSpaceModalContent';
 import DeleteSpaceModalContent from './DeleteSpaceModalContent';
+import { ActionType, CreateModalStep } from './types';
 import UpdateSpaceModalContent from './UpdateSpaceModalContent';
-
-export enum ActionType {
-    CREATE,
-    UPDATE,
-    DELETE,
-}
 
 interface ActionModalProps {
     actionType: ActionType;
     title: string;
-    icon?: IconName;
+    icon?: Icon;
     confirmButtonLabel: string;
-    confirmButtonIntent?: Intent;
+    confirmButtonColor?: DefaultMantineColor;
     data?: Space;
     projectUuid: string;
     spaceUuid?: string;
     onClose?: () => void;
-    onSubmitForm?: (data?: Space) => void;
+    onSubmitForm?: (data: Space | null) => void;
     isDisabled: boolean;
     shouldRedirect?: boolean;
 }
 
 export interface SpaceModalBody {
     data?: Space;
+    form: UseFormReturnType<Space>;
 }
 
 export interface CreateSpaceModalBody {
     data?: Space;
     modalStep: CreateModalStep;
     projectUuid: string;
-    form: UseFormReturn<Space, object>;
-    setIsShared: (isShared: boolean) => void;
+    form: UseFormReturnType<Space>;
+    privateAccessType: SpacePrivateAccessType;
+    onPrivateAccessTypeChange: (type: SpacePrivateAccessType) => void;
+    organizationUsers: OrganizationMemberProfile[] | undefined;
 }
+
+const validate = z.object({
+    name: z.string().min(1, { message: 'Name is required' }),
+});
 
 const SpaceModal: FC<ActionModalProps> = ({
     data,
     icon,
     title,
     confirmButtonLabel,
-    confirmButtonIntent = Intent.PRIMARY,
+    confirmButtonColor = 'blue',
     isDisabled,
     actionType,
     projectUuid,
@@ -72,118 +79,141 @@ const SpaceModal: FC<ActionModalProps> = ({
     onSubmitForm,
 }) => {
     const { showToastError } = useToaster();
+    const { data: organizationUsers } = useOrganizationUsers();
+    const [privateAccessType, setPrivateAccessType] = useState(
+        SpacePrivateAccessType.PRIVATE,
+    );
+
+    const [modalStep, setModalStep] = useState(CreateModalStep.SET_NAME);
 
     const form = useForm<Space>({
-        mode: 'all',
-        defaultValues: data,
+        initialValues: data,
+        validate: zodResolver(validate),
     });
 
-    const handleSubmit = (state: any) => {
+    const handleSubmit = (values: Space) => {
+        if (
+            actionType === ActionType.CREATE &&
+            modalStep === CreateModalStep.SET_NAME &&
+            privateAccessType === SpacePrivateAccessType.SHARED
+        ) {
+            setModalStep(CreateModalStep.SET_ACCESS);
+            return;
+        }
+
         try {
-            onSubmitForm?.(state);
+            onSubmitForm?.(values);
         } catch (e: any) {
             showToastError({
                 title: 'Error saving',
-                subtitle: e.message,
+                subtitle: getErrorMessage(e),
             });
         }
     };
 
-    const [modalStep, setModalStep] = useState<CreateModalStep>(
-        CreateModalStep.SET_NAME,
-    );
-    const [isShared, setIsShared] = useState<boolean>(false);
+    if (!projectUuid) {
+        return null;
+    }
 
     return (
-        <Dialog isOpen title={title} icon={icon} onClose={onClose}>
-            <Form name={title} methods={form} onSubmit={handleSubmit}>
-                <DialogBody>
+        <MantineProvider inherit theme={{ colorScheme: 'light' }}>
+            <Modal
+                opened
+                size="lg"
+                title={
+                    <Group spacing="xs">
+                        {icon && <MantineIcon icon={icon} size="lg" />}
+                        <Title order={4}>{title}</Title>
+                    </Group>
+                }
+                onClose={onClose}
+            >
+                <form name={title} onSubmit={form.onSubmit(handleSubmit)}>
                     {actionType === ActionType.CREATE ? (
                         <CreateSpaceModalContent
                             projectUuid={projectUuid}
                             data={data}
                             modalStep={modalStep}
                             form={form}
-                            setIsShared={setIsShared}
+                            privateAccessType={privateAccessType}
+                            onPrivateAccessTypeChange={setPrivateAccessType}
+                            organizationUsers={organizationUsers}
                         />
                     ) : actionType === ActionType.UPDATE ? (
-                        <UpdateSpaceModalContent data={data} />
+                        <UpdateSpaceModalContent data={data} form={form} />
                     ) : actionType === ActionType.DELETE ? (
-                        <DeleteSpaceModalContent data={data} />
+                        <DeleteSpaceModalContent data={data} form={form} />
                     ) : (
                         assertUnreachable(
                             actionType,
                             'Unexpected action in space',
                         )
                     )}
-                </DialogBody>
 
-                <DialogFooter
-                    actions={
-                        <>
-                            {actionType === ActionType.CREATE &&
-                                modalStep === CreateModalStep.SET_ACCESS && (
-                                    <>
-                                        <SimpleButton
-                                            text="Back"
-                                            onClick={(ev) => {
-                                                setModalStep(
-                                                    CreateModalStep.SET_NAME,
-                                                );
-                                                ev.preventDefault();
-                                            }}
-                                        />
-                                        <Button
-                                            data-cy="submit-base-modal"
-                                            type="submit"
-                                            disabled={
-                                                isDisabled ||
-                                                !form.formState.isValid
-                                            }
-                                            intent={confirmButtonIntent}
-                                            text={confirmButtonLabel}
-                                            loading={isDisabled}
-                                        />
-                                    </>
-                                )}
-                            {actionType === ActionType.CREATE &&
-                                modalStep === CreateModalStep.SET_NAME &&
-                                isShared && (
+                    <Group spacing="xs" position="right" mt="xl">
+                        {actionType === ActionType.CREATE &&
+                            modalStep === CreateModalStep.SET_ACCESS && (
+                                <>
                                     <Button
-                                        text="Continue"
-                                        disabled={
-                                            isDisabled ||
-                                            !form.formState.isValid
-                                        }
-                                        onClick={(ev) => {
+                                        variant="light"
+                                        onClick={(
+                                            ev: React.MouseEvent<HTMLButtonElement>,
+                                        ) => {
+                                            form.setValues({
+                                                access: undefined,
+                                            });
                                             setModalStep(
-                                                CreateModalStep.SET_ACCESS,
+                                                CreateModalStep.SET_NAME,
                                             );
                                             ev.preventDefault();
                                         }}
-                                    />
-                                )}
+                                    >
+                                        Back
+                                    </Button>
 
-                            {(actionType !== ActionType.CREATE ||
-                                (actionType === ActionType.CREATE &&
-                                    modalStep === CreateModalStep.SET_NAME &&
-                                    !isShared)) && (
-                                <Button
-                                    data-cy="submit-base-modal"
-                                    type="submit"
-                                    disabled={
-                                        isDisabled || !form.formState.isValid
-                                    }
-                                    intent={confirmButtonIntent}
-                                    text={confirmButtonLabel}
-                                    loading={isDisabled}
-                                />
+                                    <Button
+                                        type="submit"
+                                        disabled={isDisabled || !form.isValid}
+                                        color={confirmButtonColor}
+                                        loading={isDisabled}
+                                    >
+                                        {confirmButtonLabel}
+                                    </Button>
+                                </>
                             )}
-                        </>
-                    }
-                />
-            </Form>
-        </Dialog>
+
+                        {actionType === ActionType.CREATE &&
+                            modalStep === CreateModalStep.SET_NAME &&
+                            !(
+                                privateAccessType ===
+                                SpacePrivateAccessType.PRIVATE
+                            ) && (
+                                <Button
+                                    type="submit"
+                                    disabled={isDisabled || !form.isValid}
+                                >
+                                    Continue
+                                </Button>
+                            )}
+
+                        {(actionType !== ActionType.CREATE ||
+                            (actionType === ActionType.CREATE &&
+                                modalStep === CreateModalStep.SET_NAME &&
+                                privateAccessType ===
+                                    SpacePrivateAccessType.PRIVATE)) && (
+                            <Button
+                                type="submit"
+                                disabled={isDisabled || !form.isValid}
+                                color={confirmButtonColor}
+                                loading={isDisabled}
+                            >
+                                {confirmButtonLabel}
+                            </Button>
+                        )}
+                    </Group>
+                </form>
+            </Modal>
+        </MantineProvider>
     );
 };
 
@@ -195,17 +225,17 @@ const SpaceActionModal: FC<Omit<ActionModalProps, 'data' | 'isDisabled'>> = ({
     shouldRedirect = true,
     ...props
 }) => {
-    const { data, isLoading } = useSpace(projectUuid, spaceUuid!, {
+    const { data, isInitialLoading } = useSpace(projectUuid, spaceUuid, {
         enabled: !!spaceUuid,
     });
-    const history = useHistory();
+    const navigate = useNavigate();
 
     // Redirect to space on creation
     const { mutateAsync: createMutation, isLoading: isCreating } =
         useCreateMutation(projectUuid, {
             onSuccess: (space) => {
                 if (shouldRedirect) {
-                    history.push(
+                    void navigate(
                         `/projects/${projectUuid}/spaces/${space.uuid}`,
                     );
                 }
@@ -213,27 +243,37 @@ const SpaceActionModal: FC<Omit<ActionModalProps, 'data' | 'isDisabled'>> = ({
         });
 
     const { mutateAsync: updateMutation, isLoading: isUpdating } =
-        useUpdateMutation(projectUuid, spaceUuid!);
+        useUpdateMutation(projectUuid, spaceUuid);
 
     const { mutateAsync: deleteMutation, isLoading: isDeleting } =
-        useDeleteMutation(projectUuid);
+        useSpaceDeleteMutation(projectUuid);
 
-    const handleSubmitForm = async (state?: Space) => {
+    const handleSubmitForm = async (state: Space | null) => {
+        if (!state) {
+            return;
+        }
+
         if (actionType === ActionType.CREATE) {
             const result = await createMutation({
-                name: state!.name,
-                isPrivate: state!.isPrivate,
-                access: state!.access,
+                name: state.name,
+                isPrivate: state.isPrivate,
+                access: state.access?.map((access) => ({
+                    userUuid: access.userUuid,
+                    role: access.role,
+                })),
             });
             onSubmitForm?.(result);
         } else if (actionType === ActionType.UPDATE) {
             const result = await updateMutation({
-                name: state!.name,
-                isPrivate: state!.isPrivate,
+                name: state.name,
+                isPrivate: state.isPrivate,
             });
             onSubmitForm?.(result);
         } else if (actionType === ActionType.DELETE) {
-            const result = await deleteMutation(spaceUuid!);
+            if (!spaceUuid) {
+                return;
+            }
+            const result = await deleteMutation(spaceUuid);
             onSubmitForm?.(result);
         } else {
             return assertUnreachable(actionType, 'Unexpected action in space');
@@ -241,7 +281,7 @@ const SpaceActionModal: FC<Omit<ActionModalProps, 'data' | 'isDisabled'>> = ({
         props.onClose?.();
     };
 
-    if (isLoading) return null;
+    if (isInitialLoading) return null;
 
     const isWorking = isCreating || isUpdating || isDeleting;
 

@@ -1,37 +1,45 @@
+import { subject } from '@casl/ability';
 import {
     ChartType,
-    CreateSavedChartVersion,
-    Field,
-    fieldId as getFieldId,
     FilterOperator,
-    FilterRule,
+    convertFieldRefToFieldId,
     getDimensions,
     getFields,
-    getResultValues,
+    getFiltersFromGroup,
+    getItemId,
     isDimension,
     isField,
     isMetric,
-    Metric,
-    MetricQuery,
+    type CreateSavedChartVersion,
+    type Field,
+    type FilterRule,
+    type Metric,
+    type MetricQuery,
 } from '@lightdash/common';
-import { FC, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { Box, Button, Group, Modal, Title } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
+import { IconShare2 } from '@tabler/icons-react';
+import { useCallback, useMemo, useState, type FC } from 'react';
+import { useParams } from 'react-router';
 import { v4 as uuidv4 } from 'uuid';
-import { downloadCsv } from '../../hooks/useDownloadCsv';
+import { downloadCsv } from '../../api/csv';
 import { useExplore } from '../../hooks/useExplore';
 import { getExplorerUrlFromCreateSavedChartVersion } from '../../hooks/useExplorerRoute';
 import { useUnderlyingDataResults } from '../../hooks/useQueryResults';
+import { Can } from '../../providers/Ability';
+import useApp from '../../providers/App/useApp';
+import ExportCSVModal from '../ExportCSV/ExportCSVModal';
 import ErrorState from '../common/ErrorState';
 import LinkButton from '../common/LinkButton';
-import { TableColumn } from '../common/Table/types';
-import DownloadCsvButton from '../DownloadCsvButton';
-import { useMetricQueryDataContext } from './MetricQueryDataProvider';
-import { HeaderRightContent } from './UnderlyingDataModal.styles';
+import MantineIcon from '../common/MantineIcon';
+import { type TableColumn } from '../common/Table/types';
 import UnderlyingDataResultsTable from './UnderlyingDataResultsTable';
+import { useMetricQueryDataContext } from './useMetricQueryDataContext';
 
 interface Props {}
 
 const defaultMetricQuery: MetricQuery = {
+    exploreName: '',
     dimensions: [],
     metrics: [],
     filters: {},
@@ -42,9 +50,14 @@ const defaultMetricQuery: MetricQuery = {
 };
 
 const UnderlyingDataModalContent: FC<Props> = () => {
+    const modalContentElementSize = useElementSize();
+
+    const modalHeaderElementSize = useElementSize();
     const { projectUuid } = useParams<{ projectUuid: string }>();
     const { tableName, metricQuery, underlyingDataConfig } =
         useMetricQueryDataContext();
+
+    const { user } = useApp();
 
     const { data: explore } = useExplore(tableName, { refetchOnMount: false });
 
@@ -66,12 +79,12 @@ const UnderlyingDataModalContent: FC<Props> = () => {
     );
 
     const showUnderlyingValues: string[] | undefined = useMemo(() => {
-        return underlyingDataConfig?.meta !== undefined &&
-            isField(underlyingDataConfig?.meta?.item) &&
-            isMetric(underlyingDataConfig?.meta.item)
-            ? underlyingDataConfig?.meta.item.showUnderlyingValues
+        return underlyingDataConfig?.item !== undefined &&
+            isField(underlyingDataConfig.item) &&
+            isMetric(underlyingDataConfig.item)
+            ? underlyingDataConfig?.item.showUnderlyingValues
             : undefined;
-    }, [underlyingDataConfig?.meta]);
+    }, [underlyingDataConfig?.item]);
 
     const sortByUnderlyingValues = useCallback(
         (columnA: TableColumn, columnB: TableColumn) => {
@@ -79,7 +92,7 @@ const UnderlyingDataModalContent: FC<Props> = () => {
 
             const indexOfUnderlyingValue = (column: TableColumn): number => {
                 const columnDimension = allDimensions.find(
-                    (dimension) => getFieldId(dimension) === column.id,
+                    (dimension) => getItemId(dimension) === column.id,
                 );
                 if (columnDimension === undefined) return -1;
                 return showUnderlyingValues?.indexOf(columnDimension.name) !==
@@ -100,22 +113,23 @@ const UnderlyingDataModalContent: FC<Props> = () => {
 
     const underlyingDataMetricQuery = useMemo<MetricQuery>(() => {
         if (!underlyingDataConfig) return defaultMetricQuery;
-        const { meta, row, pivotReference, dimensions, value } =
+        const { item, fieldValues, pivotReference, dimensions, value } =
             underlyingDataConfig;
-        if (meta?.item === undefined) return defaultMetricQuery;
+
+        if (item === undefined) return defaultMetricQuery;
 
         // We include tables from all fields that appear on the SQL query (aka tables from all columns in results)
         const rowFieldIds = pivotReference?.pivotValues
             ? [
                   ...pivotReference.pivotValues.map(({ field }) => field),
-                  ...Object.keys(row),
+                  ...Object.keys(fieldValues),
               ]
-            : Object.keys(row);
+            : Object.keys(fieldValues);
 
         // On charts, we might want to include the dimensions from SQLquery and not from rowdata, so we include those instead
         const dimensionFieldIds = dimensions ? dimensions : rowFieldIds;
         const fieldsInQuery = allFields.filter((field) =>
-            dimensionFieldIds.includes(getFieldId(field)),
+            dimensionFieldIds.includes(getItemId(field)),
         );
         const availableTables = new Set([
             ...joinedTables,
@@ -124,14 +138,9 @@ const UnderlyingDataModalContent: FC<Props> = () => {
         ]);
 
         // If we are viewing data from a metric or a table calculation, we filter using all existing dimensions in the table
-        const dimensionFilters = !isDimension(meta?.item)
-            ? Object.entries(row).reduce((acc, r) => {
-                  const [
-                      key,
-                      {
-                          value: { raw },
-                      },
-                  ] = r;
+        const dimensionFilters = !isDimension(item)
+            ? Object.entries(fieldValues).reduce((acc, r) => {
+                  const [key, { raw }] = r;
 
                   const dimensionFilter: FilterRule = {
                       id: uuidv4(),
@@ -145,7 +154,7 @@ const UnderlyingDataModalContent: FC<Props> = () => {
                       values: raw === null ? undefined : [raw],
                   };
                   const isValidDimension = allDimensions.find(
-                      (dimension) => getFieldId(dimension) === key,
+                      (dimension) => getItemId(dimension) === key,
                   );
 
                   if (isValidDimension) {
@@ -157,7 +166,7 @@ const UnderlyingDataModalContent: FC<Props> = () => {
                   {
                       id: uuidv4(),
                       target: {
-                          fieldId: getFieldId(meta?.item),
+                          fieldId: getItemId(item),
                       },
                       operator:
                           value.raw === null
@@ -174,49 +183,49 @@ const UnderlyingDataModalContent: FC<Props> = () => {
             target: {
                 fieldId: pivot.field,
             },
-            operator: FilterOperator.EQUALS,
-            values: [pivot.value],
+            operator:
+                pivot.value === null
+                    ? FilterOperator.NULL
+                    : FilterOperator.EQUALS,
+            values: pivot.value === null ? undefined : [pivot.value],
         }));
 
-        // Metric filters fieldId don't have table prefixes, we add it here
         const metric: Metric | undefined =
-            isField(meta?.item) && isMetric(meta.item) ? meta.item : undefined;
+            isField(item) && isMetric(item) ? item : undefined;
+
         const metricFilters =
-            metric?.filters?.map((filter) => {
-                return {
-                    ...filter,
-                    target: {
-                        fieldId: getFieldId({
-                            ...metric,
-                            name: filter.target.fieldId,
-                        }),
-                    },
-                };
-            }) || [];
+            metric?.filters?.map((filter) => ({
+                ...filter,
+                target: {
+                    fieldId: convertFieldRefToFieldId(
+                        filter.target.fieldRef,
+                        metric.table,
+                    ),
+                },
+            })) || [];
+
         const exploreFilters =
             metricQuery?.filters?.dimensions !== undefined
                 ? [metricQuery.filters.dimensions]
                 : [];
 
-        const dashboardFilters = underlyingDataConfig.dashboardFilters
-            ? underlyingDataConfig.dashboardFilters.dimensions
-            : [];
         const combinedFilters = [
             ...exploreFilters,
             ...dimensionFilters,
             ...pivotFilter,
             ...metricFilters,
-            ...dashboardFilters,
         ];
 
-        const allFilters = {
-            dimensions: {
+        const allFilters = getFiltersFromGroup(
+            {
                 id: uuidv4(),
                 and: combinedFilters,
             },
-        };
-        const showUnderlyingTable: string | undefined = isField(meta?.item)
-            ? meta.item.table
+            allFields,
+        );
+
+        const showUnderlyingTable: string | undefined = isField(item)
+            ? item.table
             : undefined;
         const availableDimensions = allDimensions.filter(
             (dimension) =>
@@ -231,7 +240,7 @@ const UnderlyingDataModalContent: FC<Props> = () => {
                       )
                     : true),
         );
-        const dimensionFields = availableDimensions.map(getFieldId);
+        const dimensionFields = availableDimensions.map(getItemId);
         return {
             ...defaultMetricQuery,
             dimensions: dimensionFields,
@@ -251,7 +260,7 @@ const UnderlyingDataModalContent: FC<Props> = () => {
         const selectedDimensions = underlyingDataMetricQuery.dimensions;
         const dimensions = explore ? getDimensions(explore) : [];
         return dimensions.reduce((acc, dimension) => {
-            const fieldId = isField(dimension) ? getFieldId(dimension) : '';
+            const fieldId = isField(dimension) ? getItemId(dimension) : '';
             if (selectedDimensions.includes(fieldId))
                 return {
                     ...acc,
@@ -298,51 +307,116 @@ const UnderlyingDataModalContent: FC<Props> = () => {
     const {
         error,
         data: resultsData,
-        isLoading,
+        isInitialLoading,
     } = useUnderlyingDataResults(tableName, underlyingDataMetricQuery);
 
-    if (error) {
-        return <ErrorState error={error.error} hasMarginTop={false} />;
-    }
-
-    const getCsvLink = async () => {
-        const csvResponse = await downloadCsv({
-            projectUuid,
-            tableId: tableName,
-            query: underlyingDataMetricQuery,
-            csvLimit: resultsData?.rows.length,
-            onlyRaw: false,
-            showTableNames: true,
-        });
-        return csvResponse.url;
+    const getCsvLink = async (limit: number | null, onlyRaw: boolean) => {
+        if (projectUuid) {
+            return downloadCsv({
+                projectUuid,
+                tableId: tableName,
+                query: underlyingDataMetricQuery,
+                csvLimit: limit,
+                onlyRaw,
+                showTableNames: true,
+                columnOrder: [],
+                pivotColumns: undefined, // underlying data is always unpivoted
+            });
+        } else {
+            throw new Error('Project UUID is missing');
+        }
     };
 
+    const [isCSVExportModalOpen, setIsCSVExportModalOpen] = useState(false);
+
     return (
-        <>
-            <HeaderRightContent>
-                <DownloadCsvButton
-                    getCsvLink={getCsvLink}
-                    disabled={
-                        !resultsData?.rows || resultsData?.rows.length <= 0
-                    }
-                />
-                <LinkButton
-                    intent="primary"
-                    href={exploreFromHereUrl}
-                    icon="series-search"
-                    forceRefresh
-                >
-                    Explore from here
-                </LinkButton>
-            </HeaderRightContent>
-            <UnderlyingDataResultsTable
-                isLoading={isLoading}
-                resultsData={resultsData}
-                fieldsMap={fieldsMap}
-                hasJoins={joinedTables.length > 0}
-                sortByUnderlyingValues={sortByUnderlyingValues}
-            />
-        </>
+        <Modal.Content
+            ref={modalContentElementSize.ref}
+            sx={{
+                height: 'calc(100dvh - (1rem * 2))',
+                width: 'calc(100dvw - (1rem * 2))',
+                overflowY: 'hidden',
+            }}
+        >
+            <Modal.Header ref={modalHeaderElementSize.ref}>
+                <Modal.Title w="100%">
+                    <Group position="apart">
+                        <Title order={5}>View underlying data</Title>
+                        <Box mr="md">
+                            <Can
+                                I="manage"
+                                this={subject('ExportCsv', {
+                                    organizationUuid:
+                                        user.data?.organizationUuid,
+                                    projectUuid: projectUuid,
+                                })}
+                            >
+                                <Button
+                                    leftIcon={<MantineIcon icon={IconShare2} />}
+                                    variant="subtle"
+                                    compact
+                                    onClick={() =>
+                                        setIsCSVExportModalOpen(true)
+                                    }
+                                >
+                                    Export CSV
+                                </Button>
+                                {!!projectUuid && (
+                                    <ExportCSVModal
+                                        getCsvLink={getCsvLink}
+                                        onClose={() =>
+                                            setIsCSVExportModalOpen(false)
+                                        }
+                                        onConfirm={() =>
+                                            setIsCSVExportModalOpen(false)
+                                        }
+                                        opened={isCSVExportModalOpen}
+                                        projectUuid={projectUuid}
+                                        rows={resultsData?.rows}
+                                    />
+                                )}
+                            </Can>
+                            <Can
+                                I="manage"
+                                this={subject('Explore', {
+                                    organizationUuid:
+                                        user.data?.organizationUuid,
+                                    projectUuid: projectUuid,
+                                })}
+                            >
+                                <LinkButton
+                                    href={exploreFromHereUrl}
+                                    forceRefresh
+                                >
+                                    Explore from here
+                                </LinkButton>
+                            </Can>
+                        </Box>
+                    </Group>
+                </Modal.Title>
+
+                <Modal.CloseButton />
+            </Modal.Header>
+            <Modal.Body
+                h={
+                    modalContentElementSize.height -
+                    modalHeaderElementSize.height -
+                    40
+                }
+            >
+                {error ? (
+                    <ErrorState error={error.error} hasMarginTop={false} />
+                ) : (
+                    <UnderlyingDataResultsTable
+                        isLoading={isInitialLoading}
+                        resultsData={resultsData}
+                        fieldsMap={fieldsMap}
+                        hasJoins={joinedTables.length > 0}
+                        sortByUnderlyingValues={sortByUnderlyingValues}
+                    />
+                )}
+            </Modal.Body>
+        </Modal.Content>
     );
 };
 

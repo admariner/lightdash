@@ -1,12 +1,22 @@
-import { Collapse, Colors, Intent, Tag, Text } from '@blueprintjs/core';
 import { hasIntersection } from '@lightdash/common';
-import { intersectionBy } from 'lodash-es';
-import { FC } from 'react';
+import {
+    Badge,
+    Group,
+    Highlight,
+    HoverCard,
+    NavLink,
+    Text,
+} from '@mantine/core';
+import { IconChevronRight } from '@tabler/icons-react';
+import intersectionBy from 'lodash/intersectionBy';
+import { type FC } from 'react';
 import { useToggle } from 'react-use';
-import HighlightedText from '../../../../common/HighlightedText';
-import { Highlighted, Row, RowIcon } from '../TableTree.styles';
+import MantineIcon from '../../../../common/MantineIcon';
+import { ItemDetailMarkdown, ItemDetailPreview } from '../ItemDetailPreview';
+import { useItemDetail } from '../useItemDetails';
 import TreeNodes from './TreeNodes';
-import { GroupNode, Node, useTableTreeContext } from './TreeProvider';
+import { type GroupNode, type Node } from './types';
+import { useTableTreeContext } from './useTableTree';
 
 const getAllChildrenKeys = (nodes: Node[]): string[] => {
     return nodes.flatMap(function loop(node): string[] {
@@ -15,13 +25,16 @@ const getAllChildrenKeys = (nodes: Node[]): string[] => {
     });
 };
 
-const TreeGroupNode: FC<{ node: GroupNode; depth: number }> = ({
-    node,
-    depth,
-}) => {
+type Props = {
+    node: GroupNode;
+};
+
+const TreeGroupNode: FC<Props> = ({ node }) => {
     const { selectedItems, isSearching, searchQuery, searchResults } =
         useTableTreeContext();
-    const [isOpen, toggle] = useToggle(false);
+    const [isOpen, toggleOpen] = useToggle(false);
+    const [isHover, toggleHover] = useToggle(false);
+    const { showItemDetail } = useItemDetail();
     const allChildrenKeys: string[] = getAllChildrenKeys([node]);
     const hasSelectedChildren = hasIntersection(
         allChildrenKeys,
@@ -40,38 +53,103 @@ const TreeGroupNode: FC<{ node: GroupNode; depth: number }> = ({
         return null;
     }
 
-    return (
-        <>
-            <Row depth={depth} onClick={toggle}>
-                <RowIcon
-                    icon={
-                        isOpen || forceOpen ? 'chevron-down' : 'chevron-right'
-                    }
-                    size={16}
-                />
-                <Text ellipsize>
-                    <HighlightedText
-                        text={node.label}
-                        query={searchQuery || ''}
-                        highlightElement={Highlighted}
-                    />
-                </Text>
-                {!isOpen && hasSelectedChildren && (
-                    <Tag
-                        round
-                        minimal
-                        intent={Intent.PRIMARY}
-                        style={{ marginLeft: '10px' }}
-                    >
-                        {selectedChildrenCount}
-                    </Tag>
-                )}
-            </Row>
+    const isNavLinkOpen = forceOpen || isOpen;
+    const description = node.description;
+    const label = node.label;
 
-            <Collapse isOpen={isOpen || forceOpen}>
-                <TreeNodes nodeMap={node.children} depth={depth + 1} />
-            </Collapse>
-        </>
+    /**
+     * Handles putting together and opening the shared modal for a groups
+     * detailed description.
+     */
+    const onOpenDescriptionView = () => {
+        toggleHover(false);
+
+        showItemDetail({
+            header: (
+                <Group>
+                    <Text size="md">{label}</Text>
+                </Group>
+            ),
+            detail: description ? (
+                <ItemDetailMarkdown source={description}></ItemDetailMarkdown>
+            ) : (
+                <Text color="gray">No description available.</Text>
+            ),
+        });
+    };
+
+    return (
+        <NavLink
+            opened={isNavLinkOpen}
+            onClick={toggleOpen}
+            // --start moves chevron to the left
+            // mostly hardcoded, to match mantine's internal sizes
+            disableRightSectionRotation
+            rightSection={<></>}
+            icon={
+                <MantineIcon
+                    icon={IconChevronRight}
+                    size={14}
+                    style={{
+                        margin: 1,
+                        transition: 'transform 200ms ease',
+                        transform: isNavLinkOpen ? 'rotate(90deg)' : undefined,
+                    }}
+                />
+            }
+            // --end
+            onMouseEnter={() => toggleHover(true)}
+            onMouseLeave={() => toggleHover(false)}
+            label={
+                <Group>
+                    {!isOpen && hasSelectedChildren && (
+                        <Badge>{selectedChildrenCount}</Badge>
+                    )}
+                    <HoverCard
+                        openDelay={300}
+                        keepMounted={false}
+                        shadow="sm"
+                        withinPortal
+                        withArrow
+                        disabled={!description}
+                        position="right"
+                        /** Ensures the hover card does not overlap with the right-hand menu. */
+                        offset={80}
+                    >
+                        <HoverCard.Target>
+                            <Highlight
+                                component={Text}
+                                truncate
+                                highlight={searchQuery || ''}
+                            >
+                                {label}
+                            </Highlight>
+                        </HoverCard.Target>
+                        <HoverCard.Dropdown
+                            hidden={!isHover}
+                            p="xs"
+                            /**
+                             * Takes up space to the right, so it's OK to go fairly wide in the interest
+                             * of readability.
+                             */
+                            maw={500}
+                            /**
+                             * If we don't stop propagation, users may unintentionally toggle dimensions/metrics
+                             * while interacting with the hovercard.
+                             */
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <ItemDetailPreview
+                                onViewDescription={onOpenDescriptionView}
+                                description={description}
+                            />
+                        </HoverCard.Dropdown>
+                    </HoverCard>
+                </Group>
+            }
+        >
+            <TreeNodes nodeMap={node.children} />
+        </NavLink>
     );
 };
 

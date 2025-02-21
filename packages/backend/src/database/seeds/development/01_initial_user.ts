@@ -2,9 +2,8 @@ import {
     CreatePostgresCredentials,
     DbtLocalProjectConfig,
     DbtProjectType,
-    LightdashMode,
+    generateSlug,
     OrganizationMemberRole,
-    RequestMethod,
     SEED_ORG_1,
     SEED_ORG_1_ADMIN,
     SEED_ORG_1_ADMIN_EMAIL,
@@ -15,15 +14,16 @@ import {
     SEED_ORG_2_ADMIN_PASSWORD,
     SEED_PROJECT,
     SEED_SPACE,
+    SupportedDbtVersions,
     WarehouseTypes,
 } from '@lightdash/common';
 import bcrypt from 'bcrypt';
 import { Knex } from 'knex';
 import path from 'path';
 import { lightdashConfig } from '../../../config/lightdashConfig';
-import { projectModel } from '../../../models/models';
-import { EncryptionService } from '../../../services/EncryptionService/EncryptionService';
-import { projectService } from '../../../services/services';
+import { ProjectModel } from '../../../models/ProjectModel/ProjectModel';
+import { projectAdapterFromConfig } from '../../../projectAdapters/projectAdapter';
+import { EncryptionUtil } from '../../../utils/EncryptionUtil/EncryptionUtil';
 import { DbEmailIn } from '../../entities/emails';
 import { OnboardingTableName } from '../../entities/onboarding';
 import { DbOrganizationIn } from '../../entities/organizations';
@@ -40,26 +40,27 @@ export async function seed(knex: Knex): Promise<void> {
         seedEmail: Omit<DbEmailIn, 'user_id'>,
         seedPassword: { password: string },
     ) => {
-        const [{ organization_id: organizationId }] = await knex(
-            'organizations',
-        )
+        const [
+            {
+                organization_id: organizationId,
+                organization_uuid: organizationUuid,
+            },
+        ] = await knex('organizations')
             .insert(seedOrganization)
-            .returning('organization_id');
+            .returning(['organization_id', 'organization_uuid']);
         if (organizationId === undefined) {
             throw new Error('Organization was not created');
         }
 
-        const [{ user_id: userId }] = await knex('users')
-            .insert(seedUser)
-            .returning('user_id');
-        if (userId === undefined) {
+        const [user] = await knex('users').insert(seedUser).returning('*');
+        if (user.user_id === undefined) {
             throw new Error('User was not created');
         }
 
-        await knex('emails').insert({ ...seedEmail, user_id: userId });
+        await knex('emails').insert({ ...seedEmail, user_id: user.user_id });
 
         await knex('password_logins').insert({
-            user_id: userId,
+            user_id: user.user_id,
             password_hash: await bcrypt.hash(
                 seedPassword.password,
                 await bcrypt.genSalt(),
@@ -67,7 +68,7 @@ export async function seed(knex: Knex): Promise<void> {
         });
 
         await knex('organization_memberships').insert({
-            user_id: userId,
+            user_id: user.user_id,
             organization_id: organizationId,
             role: OrganizationMemberRole.ADMIN,
         });
@@ -78,10 +79,10 @@ export async function seed(knex: Knex): Promise<void> {
             shownSuccess_at: new Date(),
         });
 
-        return organizationId;
+        return { organizationId, user, organizationUuid };
     };
 
-    const organizationId = await addUser(
+    const { organizationId, organizationUuid, user } = await addUser(
         SEED_ORG_1,
         SEED_ORG_1_ADMIN,
         SEED_ORG_1_ADMIN_EMAIL,
@@ -95,7 +96,7 @@ export async function seed(knex: Knex): Promise<void> {
     );
 
     // Try this with relative path
-    const enc = new EncryptionService({ lightdashConfig });
+    const enc = new EncryptionUtil({ lightdashConfig });
     const demoDir = process.env.DBT_DEMO_DIR;
     if (!demoDir) {
         throw new Error(
@@ -111,90 +112,94 @@ export async function seed(knex: Knex): Promise<void> {
         JSON.stringify(projectSettings),
     );
 
-    const [{ project_id: projectId }] = await knex('projects')
+    const [{ project_id: projectId, project_uuid: projectUuid }] = await knex(
+        'projects',
+    )
         .insert({
             ...SEED_PROJECT,
             organization_id: organizationId,
             dbt_connection: encryptedProjectSettings,
+            dbt_version: SupportedDbtVersions.V1_4,
+            semantic_layer_connection: null,
+            created_by_user_uuid: user.user_uuid,
         })
-        .returning('project_id');
+        .returning(['project_id', 'project_uuid']);
+
     if (projectId === undefined) {
         throw new Error('Project was not created');
     }
 
-    let encryptedCredentials: Buffer;
-    if (
-        lightdashConfig.mode === LightdashMode.DEMO ||
-        lightdashConfig.mode === LightdashMode.PR
-    ) {
-        // Demo mode
-        if (process.env.PGHOST === undefined) {
-            throw new Error('Must specify PGHOST');
-        }
-        const port = parseInt(process.env.PGPORT || '', 10);
-        if (Number.isNaN(port)) {
-            throw new Error('Must specify a valid PGPORT');
-        }
-        if (process.env.PGPASSWORD === undefined) {
-            throw new Error('Must specify PGPASSWORD');
-        }
-        if (process.env.PGUSER === undefined) {
-            throw new Error('Must specify PGUSER in demo');
-        }
-        if (process.env.PGDATABASE === undefined) {
-            throw new Error('Must specify PGDATABASE in demo');
-        }
-        const creds: CreatePostgresCredentials = {
-            type: WarehouseTypes.POSTGRES,
-            schema: 'jaffle',
-            host: process.env.PGHOST,
-            port,
-            user: process.env.PGUSER,
-            password: process.env.PGPASSWORD,
-            dbname: process.env.PGDATABASE,
-            sslmode: 'disable',
-        };
-        encryptedCredentials = enc.encrypt(JSON.stringify(creds));
-    } else {
-        // Dev mode
-        encryptedCredentials = enc.encrypt(
-            JSON.stringify({
-                type: WarehouseTypes.POSTGRES,
-                schema: 'jaffle',
-                host: process.env.PGHOST,
-                port: Number(process.env.PGPORT),
-                user: process.env.PGUSER,
-                password: process.env.PGPASSWORD,
-                dbname: process.env.PGDATABASE,
-                keepalivesIdle: 0,
-                sslmode: 'disable',
-                threads: 1,
-            }),
-        );
+    // Demo mode
+    if (process.env.PGHOST === undefined) {
+        throw new Error('Must specify PGHOST');
     }
+    const port = parseInt(process.env.PGPORT || '', 10);
+    if (Number.isNaN(port)) {
+        throw new Error('Must specify a valid PGPORT');
+    }
+    if (process.env.PGPASSWORD === undefined) {
+        throw new Error('Must specify PGPASSWORD');
+    }
+    if (process.env.PGUSER === undefined) {
+        throw new Error('Must specify PGUSER in demo');
+    }
+    if (process.env.PGDATABASE === undefined) {
+        throw new Error('Must specify PGDATABASE in demo');
+    }
+    const warehouseCredentials: CreatePostgresCredentials = {
+        type: WarehouseTypes.POSTGRES,
+        schema: 'jaffle',
+        host: process.env.PGHOST,
+        port,
+        user: process.env.PGUSER,
+        password: process.env.PGPASSWORD,
+        dbname: process.env.PGDATABASE,
+        sslmode: 'disable',
+    };
 
     await knex('warehouse_credentials').insert({
         project_id: projectId,
-        encrypted_credentials: encryptedCredentials,
+        encrypted_credentials: enc.encrypt(
+            JSON.stringify(warehouseCredentials),
+        ),
         warehouse_type: 'postgres',
     });
 
-    await knex('spaces').insert({
-        ...SEED_SPACE,
-        is_private: false,
-        project_id: projectId,
+    const [{ space_id: spaceId, space_uuid: spaceUuid }] = await knex('spaces')
+        .insert({
+            ...SEED_SPACE,
+            is_private: false,
+            project_id: projectId,
+            slug: generateSlug(SEED_SPACE.name),
+        })
+        .returning(['space_id', 'space_uuid']);
+
+    await knex('space_user_access').insert({
+        user_uuid: user.user_uuid,
+        space_uuid: spaceUuid,
+        space_role: 'admin',
     });
 
     try {
-        const explores = await projectService.refreshAllTables(
-            { userUuid: SEED_ORG_1_ADMIN.user_uuid },
-            SEED_PROJECT.project_uuid,
-            RequestMethod.UNKNOWN,
+        const adapter = await projectAdapterFromConfig(
+            projectSettings,
+            warehouseCredentials,
+            {
+                warehouseCatalog: undefined,
+                onWarehouseCatalogChange: () => {},
+            },
+            SupportedDbtVersions.V1_4,
         );
-        await projectModel.saveExploresToCache(
-            SEED_PROJECT.project_uuid,
-            explores,
-        );
+        const explores = await adapter.compileAllExplores({
+            userUuid: user.user_uuid,
+            organizationUuid,
+            projectUuid,
+        });
+        await new ProjectModel({
+            database: knex,
+            lightdashConfig,
+            encryptionUtil: enc,
+        }).saveExploresToCache(SEED_PROJECT.project_uuid, explores);
     } catch (e) {
         console.error(e);
         throw e;

@@ -1,93 +1,108 @@
-import { Intent } from '@blueprintjs/core';
-import React, { FC } from 'react';
-import { useForm } from 'react-hook-form';
-import AnchorLink from '../components/common/AnchorLink';
-import Form from '../components/ReactHookForm/Form';
-import { usePasswordResetLinkMutation } from '../hooks/usePasswordReset';
-import { useApp } from '../providers/AppProvider';
+import { getEmailSchema } from '@lightdash/common';
 import {
-    FormLink,
-    InputField,
+    Anchor,
+    Button,
+    Center,
     List,
-    ListItem,
-    SubmitButton,
-    Subtitle,
+    Stack,
+    Text,
+    TextInput,
     Title,
-} from './PasswordRecovery.styles';
+} from '@mantine/core';
+import { useForm, zodResolver } from '@mantine/form';
+import { type FC } from 'react';
+import { Link } from 'react-router';
+import { z } from 'zod';
+import { usePasswordResetLinkMutation } from '../hooks/usePasswordReset';
+import useApp from '../providers/App/useApp';
 
 type RecoverPasswordForm = { email: string };
 
 export const PasswordRecoveryForm: FC = () => {
     const { health } = useApp();
+    const form = useForm<RecoverPasswordForm>({
+        initialValues: {
+            email: '',
+        },
+        validate: zodResolver(
+            z.object({
+                email: getEmailSchema(),
+            }),
+        ),
+    });
 
     const { isLoading, isSuccess, mutate, reset } =
         usePasswordResetLinkMutation();
-    const methods = useForm<RecoverPasswordForm>({
-        mode: 'onSubmit',
-    });
-
-    const handleSubmit = (data: RecoverPasswordForm) => {
-        mutate(data);
-    };
 
     return (
         <div>
             {!isSuccess ? (
                 <>
-                    <Title>Forgot your password? 🙈</Title>
-                    <Subtitle>
+                    <Title order={3} ta="center" mb="sm">
+                        Forgot your password?
+                    </Title>
+                    <Text ta="center" mb="md" color="dimmed">
                         Enter your email address and we’ll send you a password
                         reset link
-                    </Subtitle>
-                    <Form
-                        name="password_recovery"
-                        methods={methods}
-                        onSubmit={handleSubmit}
+                    </Text>
+                    <form
+                        name="password-recovery"
+                        onSubmit={form.onSubmit((values) => mutate(values))}
                     >
-                        <InputField
-                            label="E-mail address"
-                            name="email"
-                            placeholder="Your email address"
-                            disabled={isLoading}
-                            rules={{
-                                required: 'Required field',
-                            }}
-                        />
+                        <Stack spacing="lg">
+                            <TextInput
+                                label="Email address"
+                                name="email"
+                                placeholder="Your email address"
+                                required
+                                {...form.getInputProps('email')}
+                                disabled={isLoading || isSuccess}
+                            />
 
-                        <SubmitButton
-                            type="submit"
-                            intent={Intent.PRIMARY}
-                            text="Send reset email"
-                            loading={isLoading}
-                        />
-                        {!health.data?.isAuthenticated && (
-                            <FormLink href="/login">Back to sign in</FormLink>
-                        )}
-                    </Form>
+                            <Button type="submit" loading={isLoading}>
+                                Send reset email
+                            </Button>
+                            {!health.data?.isAuthenticated && (
+                                <Center>
+                                    <Anchor component={Link} to="/login">
+                                        Back to sign in
+                                    </Anchor>
+                                </Center>
+                            )}
+                        </Stack>
+                    </form>
                 </>
             ) : (
                 <>
-                    <Title>Check your inbox! ✅</Title>
-                    <Subtitle>
+                    <Title order={3} ta="center" mb="sm">
+                        Check your inbox!
+                    </Title>
+                    <Text ta="center" mb="lg" color="dimmed">
                         We have emailed you instructions about how to reset your
                         password. Haven’t received anything yet?
-                    </Subtitle>
+                    </Text>
 
-                    <List>
-                        <ListItem>Try checking your spam folder</ListItem>
-                        <ListItem>
+                    <List size="sm" spacing="xs">
+                        <List.Item>Try checking your spam folder</List.Item>
+                        <List.Item>
                             Try{' '}
-                            <AnchorLink
-                                href="/recover-password"
+                            <Anchor
+                                component={Link}
+                                to="/recover-password"
                                 onClick={reset}
                             >
                                 resubmitting a password reset
-                            </AnchorLink>{' '}
+                            </Anchor>{' '}
                             request,
                             <br /> ensuring that there are no typos!
-                        </ListItem>
+                        </List.Item>
                     </List>
-                    <FormLink href="/login">Back to sign in</FormLink>
+
+                    <Center mt="lg">
+                        <Anchor component={Link} to="/login">
+                            Back to sign in
+                        </Anchor>
+                    </Center>
                 </>
             )}
         </div>

@@ -1,8 +1,9 @@
 import { Ability } from '@casl/ability';
 import {
     LightdashMode,
-    Organisation,
+    Organization,
     OrganizationMemberRole,
+    PossibleAbilities,
     SessionUser,
 } from '@lightdash/common';
 import { LightdashConfig } from '../../config/parseConfig';
@@ -20,14 +21,16 @@ export const user: SessionUser = {
     isSetupComplete: true,
     userId: 0,
     role: OrganizationMemberRole.ADMIN,
-    ability: new Ability([
+    ability: new Ability<PossibleAbilities>([
         { subject: 'Dashboard', action: ['update', 'delete', 'create'] },
     ]),
     isActive: true,
     abilityRules: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
 };
 
-export const organisation: Organisation = {
+export const organization: Organization = {
     organizationUuid: 'organizationUuid',
     name: 'Lightdash',
 };

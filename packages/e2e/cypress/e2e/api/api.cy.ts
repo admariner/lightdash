@@ -1,8 +1,9 @@
-import { SEED_PROJECT } from '@lightdash/common';
+import { MetricFilterRule, MetricQuery, SEED_PROJECT } from '@lightdash/common';
 
 const apiUrl = '/api/v1';
 
-const runqueryBody = {
+const runqueryBody: MetricQuery = {
+    exploreName: 'customers',
     dimensions: ['customers_customer_id'],
     metrics: [],
     filters: {},
@@ -43,7 +44,7 @@ describe('Lightdash API', () => {
         const endpoints = [
             `/projects/${projectUuid}`,
             `/projects/${projectUuid}/explores`,
-            `/projects/${projectUuid}/spaces`,
+            `/projects/${projectUuid}/most-popular-and-recently-updated`,
             `/projects/${projectUuid}/dashboards`,
             `/projects/${projectUuid}/catalog`,
             `/projects/${projectUuid}/tablesConfiguration`,
@@ -137,13 +138,11 @@ describe('Lightdash API', () => {
         cy.request(`${apiUrl}/projects/${projectUuid}/dashboards`).then(
             (projectResponse) => {
                 expect(projectResponse.status).to.eq(200);
-                cy.log(projectResponse.body);
 
                 const dashboardUuid = projectResponse.body.results[0].uuid;
                 const endpoint = `${apiUrl}/dashboards/${dashboardUuid}`;
 
                 cy.request(endpoint).then((dashboardResponse) => {
-                    cy.log(dashboardResponse.body);
                     expect(dashboardResponse.status).to.eq(200);
                     expect(dashboardResponse.body.results).to.have.property(
                         'name',
@@ -159,9 +158,9 @@ describe('Lightdash API', () => {
                             name: dashboard.name,
                             tiles: dashboard.tiles,
                             filters: dashboard.filters,
+                            tabs: dashboard.tabs,
                         },
                     }).then((resp) => {
-                        cy.log(resp.body);
                         expect(resp.status).to.eq(200);
                         expect(resp.body).to.have.property('status', 'ok');
                     });
@@ -169,15 +168,15 @@ describe('Lightdash API', () => {
             },
         );
     });
+
     it('Should get success response (200) from GET savedChartRouter endpoints', () => {
         const projectUuid = SEED_PROJECT.project_uuid;
-        cy.request(`${apiUrl}/projects/${projectUuid}/spaces`).then(
+
+        cy.request(`${apiUrl}/projects/${projectUuid}/charts`).then(
             (projectResponse) => {
                 expect(projectResponse.status).to.eq(200);
-                cy.log(projectResponse.body);
 
-                const savedChartUuid =
-                    projectResponse.body.results[0].queries[0].uuid;
+                const savedChartUuid = projectResponse.body.results[0].uuid;
 
                 const endpoints = [
                     `/saved/${savedChartUuid}`,
@@ -186,7 +185,6 @@ describe('Lightdash API', () => {
 
                 endpoints.forEach((endpoint) => {
                     cy.request(`${apiUrl}${endpoint}`).then((resp) => {
-                        cy.log(resp.body);
                         expect(resp.status).to.eq(200);
                         expect(resp.body).to.have.property('status', 'ok');
                     });
@@ -201,6 +199,7 @@ describe('Lightdash API', () => {
             `/org/projects`,
             `/org/users`,
             `/org/onboardingStatus`,
+            `/org/users/email/demo@lightdash.com`,
         ];
         // Note:  `/org/projects` endpoint fails with 413 if we don't give conten-type:json headers
         endpoints.forEach((endpoint) => {
@@ -208,9 +207,23 @@ describe('Lightdash API', () => {
                 url: `${apiUrl}${endpoint}`,
                 headers: { 'Content-type': 'application/json' },
             }).then((resp) => {
-                cy.log(resp.body);
                 expect(resp.status).to.eq(200);
                 expect(resp.body).to.have.property('status', 'ok');
+            });
+        });
+    });
+
+    it('Should get not found response (404) from GET organizationRouter endpoints', () => {
+        const endpoints = [`/org/users/email/another@lightdash.com`];
+        // Note:  `/org/projects` endpoint fails with 413 if we don't give conten-type:json headers
+        endpoints.forEach((endpoint) => {
+            cy.request({
+                url: `${apiUrl}${endpoint}`,
+                headers: { 'Content-type': 'application/json' },
+                failOnStatusCode: false,
+            }).then((resp) => {
+                expect(resp.status).to.eq(404);
+                expect(resp.body).to.have.property('status', 'error');
             });
         });
     });
@@ -245,6 +258,42 @@ describe('Lightdash API', () => {
             },
         );
     });
+
+    it('Should get metric filters from events', () => {
+        cy.request({
+            url: `${apiUrl}/projects/${SEED_PROJECT.project_uuid}/explores/events`,
+            headers: { 'Content-type': 'application/json' },
+            failOnStatusCode: false,
+        }).then((resp) => {
+            expect(resp.status).to.eq(200);
+            expect(resp.body).to.have.property('status', 'ok');
+            const removeIds = (filters: MetricFilterRule[]) =>
+                filters.map((filter) => ({ ...filter, id: undefined }));
+            const metricFilters = removeIds(
+                resp.body.results.tables.events.metrics.with_filters
+                    .filters as MetricFilterRule[],
+            );
+            expect(metricFilters).to.have.length(3);
+            expect(metricFilters[0]).to.deep.equal({
+                id: undefined,
+                operator: 'notNull',
+                values: [1],
+                target: { fieldRef: 'event_id' },
+            });
+            expect(metricFilters[1]).to.deep.equal({
+                id: undefined,
+                operator: 'greaterThan',
+                values: [5],
+                target: { fieldRef: 'event_id' },
+            });
+            expect(metricFilters[2]).to.deep.equal({
+                id: undefined,
+                operator: 'equals',
+                values: ['song_played'],
+                target: { fieldRef: 'event' },
+            });
+        });
+    });
 });
 
 describe('Lightdash API forbidden tests', () => {
@@ -267,7 +316,7 @@ describe('Lightdash API forbidden tests', () => {
         const endpoints = [
             `/projects/${projectUuid}`,
             `/projects/${projectUuid}/explores`,
-            // `/projects/${projectUuid}/spaces`, // This will return 200 but an empty list, check test below
+            `/projects/${projectUuid}/spaces`,
             // `/projects/${projectUuid}/dashboards`, // This will return 200 but an empty list, check test below
             `/projects/${projectUuid}/catalog`,
             `/projects/${projectUuid}/tablesConfiguration`,
@@ -279,27 +328,10 @@ describe('Lightdash API forbidden tests', () => {
         endpoints.forEach((endpoint) => {
             cy.request({
                 url: `${apiUrl}${endpoint}`,
-                timeout: 500,
                 failOnStatusCode: false,
             }).then((resp) => {
                 expect(resp.status).to.eq(403);
             });
-        });
-    });
-
-    it('Should get an empty list of spaces from projects', () => {
-        cy.anotherLogin();
-
-        const projectUuid = SEED_PROJECT.project_uuid;
-        cy.request({
-            url: `${apiUrl}/projects/${projectUuid}/spaces`,
-            failOnStatusCode: false,
-        }).then((resp) => {
-            cy.log(resp.body);
-            expect(resp.status).to.eq(200);
-            expect(resp.body).to.have.property('status', 'ok');
-
-            expect(resp.body.results).to.have.length(0);
         });
     });
 
@@ -368,12 +400,11 @@ describe('Lightdash API forbidden tests', () => {
         cy.login(); // Make request as first user to get the chartUuid
 
         const projectUuid = SEED_PROJECT.project_uuid;
-        cy.request(`${apiUrl}/projects/${projectUuid}/spaces`).then(
+        cy.request(`${apiUrl}/projects/${projectUuid}/charts`).then(
             (projectResponse) => {
                 expect(projectResponse.status).to.eq(200);
                 cy.log(projectResponse.body);
-                const savedChartUuid =
-                    projectResponse.body.results[0].queries[0].uuid;
+                const savedChartUuid = projectResponse.body.results[0].uuid;
 
                 cy.anotherLogin(); // Now we login as another user
 
@@ -385,7 +416,6 @@ describe('Lightdash API forbidden tests', () => {
                 endpoints.forEach((endpoint) => {
                     cy.request({
                         url: `${apiUrl}${endpoint}`,
-                        timeout: 500,
                         failOnStatusCode: false,
                     }).then((resp) => {
                         expect(resp.status).to.eq(403);

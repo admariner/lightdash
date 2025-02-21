@@ -1,32 +1,39 @@
-import React, { FC, memo, useState } from 'react';
-import { useTracking } from '../providers/TrackingProvider';
+import { Button } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
+import { memo, useState } from 'react';
+import { CreateTableCalculationModal } from '../features/tableCalculation';
+import useTracking from '../providers/Tracking/useTracking';
 import { EventName } from '../types/Events';
-import SimpleButton from './common/SimpleButton';
-import { CreateTableCalculationModal } from './TableCalculationModels';
+import { COLLAPSABLE_CARD_BUTTON_PROPS } from './common/CollapsableCard/constants';
+import MantineIcon from './common/MantineIcon';
 
-const AddColumnButton: FC = memo(() => {
-    const [isOpen, setIsOpen] = useState<boolean>(false);
+const AddColumnButton = memo(() => {
+    const [opened, setOpened] = useState<boolean>(false);
     const { track } = useTracking();
     return (
-        <div style={{ display: 'inline-flex', gap: '10px' }}>
-            <SimpleButton
-                icon="plus"
-                text="Table calculation"
-                onClick={(e) => {
+        <>
+            <Button
+                {...COLLAPSABLE_CARD_BUTTON_PROPS}
+                leftIcon={<MantineIcon icon={IconPlus} />}
+                component="button"
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
-                    setIsOpen(true);
+                    setOpened(true);
                     track({
                         name: EventName.ADD_COLUMN_BUTTON_CLICKED,
                     });
                 }}
-            />
-            {isOpen && (
+            >
+                Table calculation
+            </Button>
+
+            {opened && (
                 <CreateTableCalculationModal
-                    isOpen={isOpen}
-                    onClose={() => setIsOpen(false)}
+                    opened={opened}
+                    onClose={() => setOpened(false)}
                 />
             )}
-        </div>
+        </>
     );
 });
 

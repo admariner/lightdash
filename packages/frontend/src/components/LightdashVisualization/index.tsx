@@ -1,27 +1,42 @@
-import { ChartType } from '@lightdash/common';
-import { FC, memo } from 'react';
+import { assertUnreachable, ChartType } from '@lightdash/common';
+import { memo, type FC } from 'react';
+import CustomVisualization from '../CustomVisualization';
+import FunnelChart from '../FunnelChart';
 import SimpleChart from '../SimpleChart';
+import SimplePieChart from '../SimplePieChart';
 import SimpleStatistic from '../SimpleStatistic';
 import SimpleTable from '../SimpleTable';
-import { useVisualizationContext } from './VisualizationProvider';
+import { useVisualizationContext } from './useVisualizationContext';
 
 interface LightdashVisualizationProps {
     isDashboard?: boolean;
     tileUuid?: string;
+    isTitleHidden?: boolean;
     className?: string;
-    $padding?: number;
     'data-testid'?: string;
 }
 
 const LightdashVisualization: FC<LightdashVisualizationProps> = memo(
-    ({ isDashboard, tileUuid, className, ...props }) => {
-        const { chartType, minimal } = useVisualizationContext();
+    ({
+        isDashboard = false,
+        tileUuid,
+        isTitleHidden = false,
+        className,
+        ...props
+    }) => {
+        const { visualizationConfig, minimal } = useVisualizationContext();
 
-        switch (chartType) {
+        if (!visualizationConfig) {
+            return null;
+        }
+
+        switch (visualizationConfig.chartType) {
             case ChartType.BIG_NUMBER:
                 return (
                     <SimpleStatistic
                         minimal={minimal}
+                        isTitleHidden={isTitleHidden}
+                        isDashboard={isDashboard}
                         className={className}
                         data-testid={props['data-testid']}
                         {...props}
@@ -30,12 +45,11 @@ const LightdashVisualization: FC<LightdashVisualizationProps> = memo(
             case ChartType.TABLE:
                 return (
                     <SimpleTable
-                        minimal={minimal}
                         tileUuid={tileUuid}
+                        minimal={minimal}
                         isDashboard={!!isDashboard}
                         className={className}
                         $shouldExpand
-                        $padding={props.$padding}
                         data-testid={props['data-testid']}
                         {...props}
                     />
@@ -44,13 +58,45 @@ const LightdashVisualization: FC<LightdashVisualizationProps> = memo(
                 return (
                     <SimpleChart
                         className={className}
+                        isInDashboard={!!isDashboard}
                         $shouldExpand
                         data-testid={props['data-testid']}
                         {...props}
                     />
                 );
+            case ChartType.PIE:
+                return (
+                    <SimplePieChart
+                        className={className}
+                        isInDashboard={!!isDashboard}
+                        $shouldExpand
+                        data-testid={props['data-testid']}
+                        {...props}
+                    />
+                );
+            case ChartType.FUNNEL:
+                return (
+                    <FunnelChart
+                        className={className}
+                        isInDashboard={!!isDashboard}
+                        $shouldExpand
+                        data-testid={props['data-testid']}
+                        {...props}
+                    />
+                );
+            case ChartType.CUSTOM:
+                return (
+                    <CustomVisualization
+                        data-testid={props['data-testid']}
+                        className={className}
+                    />
+                );
+
             default:
-                return null;
+                return assertUnreachable(
+                    visualizationConfig,
+                    `Chart type is not implemented`,
+                );
         }
     },
 );

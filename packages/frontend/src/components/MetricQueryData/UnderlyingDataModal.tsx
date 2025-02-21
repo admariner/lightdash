@@ -1,28 +1,23 @@
-import { Dialog } from '@blueprintjs/core';
-import React, { FC } from 'react';
-import { useMetricQueryDataContext } from './MetricQueryDataProvider';
+import { Modal } from '@mantine/core';
+import { type FC } from 'react';
 import UnderlyingDataModalContent from './UnderlyingDataModalContent';
+import { useMetricQueryDataContext } from './useMetricQueryDataContext';
 
 const UnderlyingDataModal: FC = () => {
     const { isUnderlyingDataModalOpen, closeUnderlyingDataModal } =
         useMetricQueryDataContext();
 
-    return (
-        <Dialog
-            isOpen={isUnderlyingDataModalOpen}
+    return isUnderlyingDataModalOpen ? (
+        <Modal.Root
+            centered
+            opened
             onClose={closeUnderlyingDataModal}
-            lazy
-            title={`View underlying data`}
-            style={{
-                width: '90%',
-                height: '90vh',
-                minHeight: '400px',
-                minWidth: '500px',
-            }}
+            size="auto"
         >
+            <Modal.Overlay />
             <UnderlyingDataModalContent />
-        </Dialog>
-    );
+        </Modal.Root>
+    ) : null;
 };
 
 export default UnderlyingDataModal;

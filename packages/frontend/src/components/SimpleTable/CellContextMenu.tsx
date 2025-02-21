@@ -1,79 +1,133 @@
-import { Menu, MenuDivider } from '@blueprintjs/core';
-import { MenuItem2 } from '@blueprintjs/popover2';
-import { isDimension, isField, ResultRow } from '@lightdash/common';
-import React, { FC } from 'react';
-import CopyToClipboard from 'react-copy-to-clipboard';
-import { useParams } from 'react-router-dom';
+import { subject } from '@casl/ability';
+import {
+    hasCustomDimension,
+    isCustomDimension,
+    isDimension,
+    isField,
+    type ResultValue,
+} from '@lightdash/common';
+import { Menu } from '@mantine/core';
+import { useClipboard } from '@mantine/hooks';
+import { IconCopy, IconStack } from '@tabler/icons-react';
+import mapValues from 'lodash/mapValues';
+import { useCallback, useMemo, type FC } from 'react';
+import { useParams } from 'react-router';
 import useToaster from '../../hooks/toaster/useToaster';
-import { useApp } from '../../providers/AppProvider';
-import { useTracking } from '../../providers/TrackingProvider';
+import { Can } from '../../providers/Ability';
+import useApp from '../../providers/App/useApp';
+import useTracking from '../../providers/Tracking/useTracking';
 import { EventName } from '../../types/Events';
-import { CellContextMenuProps } from '../common/Table/types';
+import MantineIcon from '../common/MantineIcon';
+import { type CellContextMenuProps } from '../common/Table/types';
 import UrlMenuItems from '../Explorer/ResultsCard/UrlMenuItems';
 import DrillDownMenuItem from '../MetricQueryData/DrillDownMenuItem';
-import { useMetricQueryDataContext } from '../MetricQueryData/MetricQueryDataProvider';
+import { useMetricQueryDataContext } from '../MetricQueryData/useMetricQueryDataContext';
 
 const CellContextMenu: FC<Pick<CellContextMenuProps, 'cell'>> = ({ cell }) => {
-    const { openUnderlyingDataModel } = useMetricQueryDataContext();
+    const { openUnderlyingDataModal, metricQuery } =
+        useMetricQueryDataContext();
     const { showToastSuccess } = useToaster();
     const meta = cell.column.columnDef.meta;
     const item = meta?.item;
 
-    const value: ResultRow[0]['value'] = cell.getValue()?.value || {};
+    const value: ResultValue = useMemo(
+        () => cell.getValue()?.value || {},
+        [cell],
+    );
+    const fieldValues = useMemo(
+        () => mapValues(cell.row.original, (v) => v?.value) || {},
+        [cell],
+    );
 
     const { track } = useTracking();
     const { user } = useApp();
     const { projectUuid } = useParams<{ projectUuid: string }>();
+    const clipboard = useClipboard({ timeout: 200 });
+
+    const handleCopyToClipboard = useCallback(() => {
+        clipboard.copy(value.formatted);
+        showToastSuccess({ title: 'Copied to clipboard!' });
+    }, [clipboard, showToastSuccess, value.formatted]);
+
+    const handleViewUnderlyingData = useCallback(() => {
+        openUnderlyingDataModal({
+            item,
+            value,
+            fieldValues,
+        });
+        track({
+            name: EventName.VIEW_UNDERLYING_DATA_CLICKED,
+            properties: {
+                organizationId: user?.data?.organizationUuid,
+                userId: user?.data?.userUuid,
+                projectId: projectUuid,
+            },
+        });
+    }, [
+        fieldValues,
+        item,
+        openUnderlyingDataModal,
+        projectUuid,
+        track,
+        user?.data?.organizationUuid,
+        user?.data?.userUuid,
+        value,
+    ]);
+
     return (
-        <Menu>
-            {item && value.raw && isField(item) && (
+        <>
+            {item && value.raw && isField(item) ? (
                 <UrlMenuItems urls={item.urls} cell={cell} />
-            )}
+            ) : null}
 
-            {isField(item) && (item.urls || []).length > 0 && <MenuDivider />}
+            {isField(item) && (item.urls || []).length > 0 && <Menu.Divider />}
 
-            <CopyToClipboard
-                text={value.formatted}
-                onCopy={() => {
-                    showToastSuccess({ title: 'Copied to clipboard!' });
-                }}
+            <Menu.Item
+                icon={<MantineIcon icon={IconCopy} size="md" fillOpacity={0} />}
+                onClick={handleCopyToClipboard}
             >
-                <MenuItem2 text="Copy value" icon="duplicate" />
-            </CopyToClipboard>
+                Copy value
+            </Menu.Item>
 
-            {item && !isDimension(item) && (
-                <MenuItem2
-                    text="View underlying data"
-                    icon="layers"
-                    onClick={() => {
-                        openUnderlyingDataModel(
-                            value,
-                            meta,
-                            cell.row.original || {},
-                        );
-                        track({
-                            name: EventName.VIEW_UNDERLYING_DATA_CLICKED,
-                            properties: {
-                                organizationId: user?.data?.organizationUuid,
-                                userId: user?.data?.userUuid,
-                                projectId: projectUuid,
-                            },
-                        });
+            {item &&
+                !isDimension(item) &&
+                !isCustomDimension(item) &&
+                !hasCustomDimension(metricQuery) && (
+                    <Can
+                        I="view"
+                        this={subject('UnderlyingData', {
+                            organizationUuid: user.data?.organizationUuid,
+                            projectUuid: projectUuid,
+                        })}
+                    >
+                        <Menu.Item
+                            icon={<MantineIcon icon={IconStack} size="md" />}
+                            onClick={handleViewUnderlyingData}
+                        >
+                            View underlying data
+                        </Menu.Item>
+                    </Can>
+                )}
+
+            <Can
+                I="manage"
+                this={subject('Explore', {
+                    organizationUuid: user.data?.organizationUuid,
+                    projectUuid: projectUuid,
+                })}
+            >
+                <DrillDownMenuItem
+                    item={item}
+                    fieldValues={fieldValues}
+                    pivotReference={meta?.pivotReference}
+                    trackingData={{
+                        organizationId: user?.data?.organizationUuid,
+                        userId: user?.data?.userUuid,
+                        projectId: projectUuid,
                     }}
                 />
-            )}
-
-            <DrillDownMenuItem
-                row={cell.row.original || {}}
-                pivotReference={meta?.pivotReference}
-                selectedItem={item}
-                trackingData={{
-                    organizationId: user?.data?.organizationUuid,
-                    userId: user?.data?.userUuid,
-                    projectId: projectUuid,
-                }}
-            />
-        </Menu>
+            </Can>
+        </>
     );
 };
 

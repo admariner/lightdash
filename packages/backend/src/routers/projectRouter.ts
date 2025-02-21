@@ -1,58 +1,23 @@
 import {
-    ApiCompiledQueryResults,
-    ApiExploreResults,
-    ApiExploresResults,
-    ApiQueryResults,
-    ApiSqlQueryResults,
-    getItemMap,
+    getObjectValue,
     getRequestMethod,
     LightdashRequestMethodHeader,
-    MetricQuery,
     NotFoundError,
     ProjectCatalog,
     TablesConfiguration,
 } from '@lightdash/common';
 import express from 'express';
-import * as fs from 'fs/promises';
-import { nanoid } from 'nanoid';
+
 import path from 'path';
-import { lightdashConfig } from '../config/lightdashConfig';
 import {
     allowApiKeyAuthentication,
     isAuthenticated,
     unauthorisedInDemo,
 } from '../controllers/authentication';
-import { CsvService } from '../services/CsvService/CsvService';
-import {
-    dashboardService,
-    projectService,
-    s3Service,
-    savedChartsService,
-    searchService,
-    spaceService,
-} from '../services/services';
-import { wrapSentryTransaction } from '../utils';
+
+const fs = require('fs');
 
 export const projectRouter = express.Router({ mergeParams: true });
-
-projectRouter.get(
-    '/',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        try {
-            res.json({
-                status: 'ok',
-                results: await projectService.getProject(
-                    req.params.projectUuid,
-                    req.user!,
-                ),
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
 
 projectRouter.patch(
     '/',
@@ -60,9 +25,10 @@ projectRouter.patch(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        projectService
-            .update(
-                req.params.projectUuid,
+        req.services
+            .getProjectService()
+            .updateAndScheduleAsyncWork(
+                getObjectValue(req.params, 'projectUuid'),
                 req.user!,
                 req.body,
                 getRequestMethod(req.header(LightdashRequestMethodHeader)),
@@ -83,68 +49,20 @@ projectRouter.get(
     isAuthenticated,
     async (req, res, next) => {
         try {
-            const results = await searchService.getSearchResults(
-                req.user!,
-                req.params.projectUuid,
-                req.params.query,
-            );
-            res.json({ status: 'ok', results });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-
-projectRouter.put(
-    '/explores',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        projectService
-            .setExplores(req.params.projectUuid, req.body)
-            .then(() => {
-                res.json({
-                    status: 'ok',
-                });
-            })
-            .catch(next);
-    },
-);
-
-projectRouter.get(
-    '/explores',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        try {
-            const results: ApiExploresResults =
-                await projectService.getAllExploresSummary(
+            const { type, fromDate, toDate, createdByUuid } = req.query;
+            const results = await req.services
+                .getSearchService()
+                .getSearchResults(
                     req.user!,
-                    req.params.projectUuid,
-                    req.query.filtered === 'true',
+                    getObjectValue(req.params, 'projectUuid'),
+                    getObjectValue(req.params, 'query'),
+                    {
+                        type: type?.toString(),
+                        fromDate: fromDate?.toString(),
+                        toDate: toDate?.toString(),
+                        createdByUuid: createdByUuid?.toString(),
+                    },
                 );
-            res.json({
-                status: 'ok',
-                results,
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-
-projectRouter.get(
-    '/explores/:exploreId',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        try {
-            const results: ApiExploreResults = await projectService.getExplore(
-                req.user!,
-                req.params.projectUuid,
-                req.params.exploreId,
-            );
             res.json({ status: 'ok', results });
         } catch (e) {
             next(e);
@@ -152,190 +70,53 @@ projectRouter.get(
     },
 );
 
-projectRouter.post(
-    '/explores/:exploreId/compileQuery',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        try {
-            const { body } = req;
-            const metricQuery: MetricQuery = {
-                dimensions: body.dimensions,
-                metrics: body.metrics,
-                filters: body.filters,
-                sorts: body.sorts,
-                limit: body.limit,
-                tableCalculations: body.tableCalculations,
-                additionalMetrics: body.additionalMetrics,
-            };
-            const results: ApiCompiledQueryResults = (
-                await projectService.compileQuery(
-                    req.user!,
-                    metricQuery,
-                    req.params.projectUuid,
-                    req.params.exploreId,
-                )
-            ).query;
-            res.json({
-                status: 'ok',
-                results,
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-
-projectRouter.post(
-    '/explores/:exploreId/runQuery',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        try {
-            const { body } = req;
-            const { csvLimit } = body;
-            const metricQuery: MetricQuery = {
-                dimensions: body.dimensions,
-                metrics: body.metrics,
-                filters: body.filters,
-                sorts: body.sorts,
-                limit: body.limit,
-                tableCalculations: body.tableCalculations,
-                additionalMetrics: body.additionalMetrics,
-            };
-            const results: ApiQueryResults = await projectService.runQuery(
-                req.user!,
-                metricQuery,
-                req.params.projectUuid,
-                req.params.exploreId,
-                csvLimit,
-            );
-            res.json({
-                status: 'ok',
-                results,
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-
-projectRouter.post(
-    '/explores/:exploreId/downloadCsv',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        try {
-            const { body } = req;
-            const { csvLimit, onlyRaw, showTableNames, customLabels } = body;
-            const metricQuery: MetricQuery = {
-                dimensions: body.dimensions,
-                metrics: body.metrics,
-                filters: body.filters,
-                sorts: body.sorts,
-                limit: body.limit,
-                tableCalculations: body.tableCalculations,
-                additionalMetrics: body.additionalMetrics,
-            };
-            const results: ApiQueryResults = await projectService.runQuery(
-                req.user!,
-                metricQuery,
-                req.params.projectUuid,
-                req.params.exploreId,
-                csvLimit,
-            );
-
-            const explore = await projectService.getExplore(
-                req.user!,
-                req.params.projectUuid,
-                req.params.exploreId,
-            );
-            const itemMap = getItemMap(
-                explore,
-                metricQuery.additionalMetrics,
-                metricQuery.tableCalculations,
-            );
-            const csvContent = await wrapSentryTransaction<string>(
-                'convert API results to CSV',
-                {},
-                async () =>
-                    CsvService.convertApiResultsToCsv(
-                        results,
-                        onlyRaw,
-                        metricQuery,
-                        itemMap,
-                        showTableNames,
-                        customLabels,
-                    ),
-            );
-
-            const fileId = `csv-${nanoid()}.csv`;
-
-            let fileUrl;
-            try {
-                fileUrl = await s3Service.uploadCsv(csvContent, fileId);
-            } catch (e) {
-                await fs.writeFile(`/tmp/${fileId}`, csvContent, 'utf-8');
-                fileUrl = `${lightdashConfig.siteUrl}/api/v1/projects/${req.params.projectUuid}/csv/${fileId}`;
-            }
-
-            res.json({
-                status: 'ok',
-                results: {
-                    url: fileUrl,
-                },
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-
 projectRouter.get(
-    '/csv/:fileId',
+    '/csv/:nanoId',
 
     async (req, res, next) => {
-        if (!req.params.fileId.startsWith('csv-')) {
-            throw new NotFoundError(`File not found ${req.params.fileId}`);
-        }
         try {
-            const filePath = path.join('/tmp', req.params.fileId);
-            res.sendFile(filePath);
+            const { nanoId } = req.params;
+            const { path: filePath } = await req.services
+                .getDownloadFileService()
+                .getDownloadFile(nanoId);
+            const filename = path.basename(filePath);
+            const normalizedPath = path.resolve('/tmp/', filename);
+            if (!normalizedPath.startsWith('/tmp/')) {
+                throw new NotFoundError(`File not found ${filename}`);
+            }
+            if (!fs.existsSync(normalizedPath)) {
+                throw new NotFoundError(`File not found: ${filename}`);
+            }
+            res.set('Content-Type', 'text/csv');
+            res.set(
+                'Content-Disposition',
+                `attachment; filename="${filename}"`,
+            );
+            res.sendFile(normalizedPath);
         } catch (error) {
             next(error);
         }
     },
 );
 
-projectRouter.get(
+projectRouter.post(
     '/field/:fieldId/search',
     allowApiKeyAuthentication,
     isAuthenticated,
     async (req, res, next) => {
         try {
-            const value: string =
-                typeof req.query.value === 'string'
-                    ? req.query.value.toString()
-                    : '';
-            const limit: number =
-                typeof req.query.limit === 'string'
-                    ? parseInt(req.query.limit.toString(), 10)
-                    : 100;
-
-            const table =
-                typeof req.query.table === 'string' ? req.query.table : '';
-
-            const results = {
-                search: value,
-                results: await projectService.searchFieldUniqueValues(
+            const results = await req.services
+                .getProjectService()
+                .searchFieldUniqueValues(
                     req.user!,
-                    req.params.projectUuid,
-                    table,
-                    req.params.fieldId,
-                    value,
-                    limit,
-                ),
-            };
+                    getObjectValue(req.params, 'projectUuid'),
+                    req.body.table,
+                    getObjectValue(req.params, 'fieldId'),
+                    req.body.search,
+                    req.body.limit,
+                    req.body.filters,
+                    req.body.forceRefresh,
+                );
 
             res.json({
                 status: 'ok',
@@ -354,11 +135,13 @@ projectRouter.post(
     unauthorisedInDemo,
     async (req, res, next) => {
         try {
-            const results = await projectService.compileProject(
-                req.user!,
-                req.params.projectUuid,
-                getRequestMethod(req.header(LightdashRequestMethodHeader)),
-            );
+            const results = await req.services
+                .getProjectService()
+                .scheduleCompileProject(
+                    req.user!,
+                    getObjectValue(req.params, 'projectUuid'),
+                    getRequestMethod(req.header(LightdashRequestMethodHeader)),
+                );
             res.json({
                 status: 'ok',
                 results,
@@ -375,12 +158,15 @@ projectRouter.post(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
+        const savedChartsService = req.services.getSavedChartService();
+
         if (req.query.duplicateFrom) {
             savedChartsService
                 .duplicate(
                     req.user!,
-                    req.params.projectUuid,
+                    getObjectValue(req.params, 'projectUuid'),
                     req.query.duplicateFrom.toString(),
+                    req.body,
                 )
                 .then((results) => {
                     res.json({
@@ -391,7 +177,11 @@ projectRouter.post(
                 .catch(next);
         } else {
             savedChartsService
-                .create(req.user!, req.params.projectUuid, req.body)
+                .create(
+                    req.user!,
+                    getObjectValue(req.params, 'projectUuid'),
+                    req.body,
+                )
                 .then((results) => {
                     res.json({
                         status: 'ok',
@@ -409,8 +199,13 @@ projectRouter.patch(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        savedChartsService
-            .updateMultiple(req.user!, req.params.projectUuid, req.body)
+        req.services
+            .getSavedChartService()
+            .updateMultiple(
+                req.user!,
+                getObjectValue(req.params, 'projectUuid'),
+                req.body,
+            )
             .then((results) => {
                 res.json({
                     status: 'ok',
@@ -422,81 +217,16 @@ projectRouter.patch(
 );
 
 projectRouter.get(
-    '/spaces',
+    '/most-popular-and-recently-updated',
     allowApiKeyAuthentication,
     isAuthenticated,
     async (req, res, next) => {
-        spaceService
-            .getAllSpaces(req.params.projectUuid, req.user!)
-            .then((results) => {
-                res.json({
-                    status: 'ok',
-                    results,
-                });
-            })
-            .catch(next);
-    },
-);
-projectRouter.get(
-    '/spaces/:spaceUuid',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        spaceService
-            .getSpace(req.params.projectUuid, req.user!, req.params.spaceUuid)
-            .then((results) => {
-                res.json({
-                    status: 'ok',
-                    results,
-                });
-            })
-            .catch(next);
-    },
-);
-projectRouter.post(
-    '/spaces',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        spaceService
-            .createSpace(req.params.projectUuid, req.user!, req.body)
-            .then((results) => {
-                res.json({
-                    status: 'ok',
-                    results,
-                });
-            })
-            .catch(next);
-    },
-);
-
-projectRouter.delete(
-    '/spaces/:spaceUUid',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        spaceService
-            .deleteSpace(req.user!, req.params.spaceUUid)
-            .then((results) => {
-                res.json({
-                    status: 'ok',
-                    results,
-                });
-            })
-            .catch(next);
-    },
-);
-
-projectRouter.patch(
-    '/spaces/:spaceUUid',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        spaceService
-            .updateSpace(req.user!, req.params.spaceUUid, req.body)
+        req.services
+            .getProjectService()
+            .getMostPopularAndRecentlyUpdated(
+                req.user!,
+                getObjectValue(req.params, 'projectUuid'),
+            )
             .then((results) => {
                 res.json({
                     status: 'ok',
@@ -513,8 +243,9 @@ projectRouter.patch(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        spaceService
-            .togglePinning(req.user!, req.params.spaceUuid)
+        req.services
+            .getSpaceService()
+            .togglePinning(req.user!, getObjectValue(req.params, 'spaceUuid'))
             .then((results) => {
                 res.json({
                     status: 'ok',
@@ -522,181 +253,6 @@ projectRouter.patch(
                 });
             })
             .catch(next);
-    },
-);
-
-projectRouter.post(
-    '/spaces/:spaceUUid/share',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        spaceService
-            .addSpaceShare(req.user!, req.params.spaceUUid, req.body.userUuid)
-            .then(() => {
-                res.json({
-                    status: 'ok',
-                });
-            })
-            .catch(next);
-    },
-);
-
-projectRouter.delete(
-    '/spaces/:spaceUUid/share/:userUuid',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        spaceService
-            .removeSpaceShare(
-                req.user!,
-                req.params.spaceUUid,
-                req.params.userUuid,
-            )
-            .then(() => {
-                res.json({
-                    status: 'ok',
-                });
-            })
-            .catch(next);
-    },
-);
-
-projectRouter.get(
-    '/dashboards',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        const chartUuid: string | undefined =
-            typeof req.query.chartUuid === 'string'
-                ? req.query.chartUuid.toString()
-                : undefined;
-        dashboardService
-            .getAllByProject(req.user!, req.params.projectUuid, chartUuid)
-            .then((results) => {
-                res.json({
-                    status: 'ok',
-                    results,
-                });
-            })
-            .catch(next);
-    },
-);
-
-projectRouter.post(
-    '/dashboards',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        if (req.query.duplicateFrom) {
-            dashboardService
-                .duplicate(
-                    req.user!,
-                    req.params.projectUuid,
-                    req.query.duplicateFrom.toString(),
-                )
-                .then((results) => {
-                    res.status(201).json({
-                        status: 'ok',
-                        results,
-                    });
-                })
-                .catch(next);
-        } else {
-            dashboardService
-                .create(req.user!, req.params.projectUuid, req.body)
-                .then((results) => {
-                    res.status(201).json({
-                        status: 'ok',
-                        results,
-                    });
-                })
-                .catch(next);
-        }
-    },
-);
-
-projectRouter.patch(
-    '/dashboards',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        dashboardService
-            .updateMultiple(req.user!, req.params.projectUuid, req.body)
-            .then((results) => {
-                res.json({
-                    status: 'ok',
-                    results,
-                });
-            })
-            .catch(next);
-    },
-);
-
-projectRouter.post(
-    '/sqlQuery',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        try {
-            const results: ApiSqlQueryResults =
-                await projectService.runSqlQuery(
-                    req.user!,
-                    req.params.projectUuid,
-                    req.body.sql,
-                );
-            res.json({
-                status: 'ok',
-                results,
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-
-projectRouter.post(
-    '/sqlRunner/downloadCsv',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        try {
-            const results: ApiSqlQueryResults =
-                await projectService.runSqlQuery(
-                    req.user!,
-                    req.params.projectUuid,
-                    req.body.sql,
-                );
-
-            const csvContent = await CsvService.convertSqlQueryResultsToCsv(
-                results,
-                req.body.customLabels,
-            );
-
-            const fileId = `csv-${nanoid()}.csv`;
-
-            let fileUrl;
-            try {
-                fileUrl = await s3Service.uploadCsv(csvContent, fileId);
-            } catch (e) {
-                // Can't store file in S3, storing locally
-                await fs.writeFile(`/tmp/${fileId}`, csvContent, 'utf-8');
-                fileUrl = `${lightdashConfig.siteUrl}/api/v1/projects/${req.params.projectUuid}/csv/${fileId}`;
-            }
-
-            res.json({
-                status: 'ok',
-                results: {
-                    url: fileUrl,
-                },
-            });
-        } catch (e) {
-            next(e);
-        }
     },
 );
 
@@ -706,10 +262,12 @@ projectRouter.get(
     isAuthenticated,
     async (req, res, next) => {
         try {
-            const results: ProjectCatalog = await projectService.getCatalog(
-                req.user!,
-                req.params.projectUuid,
-            );
+            const results: ProjectCatalog = await req.services
+                .getProjectService()
+                .getCatalog(
+                    req.user!,
+                    getObjectValue(req.params, 'projectUuid'),
+                );
             res.json({
                 status: 'ok',
                 results,
@@ -726,10 +284,11 @@ projectRouter.get(
     isAuthenticated,
     async (req, res, next) => {
         try {
-            const results: TablesConfiguration =
-                await projectService.getTablesConfiguration(
+            const results: TablesConfiguration = await req.services
+                .getProjectService()
+                .getTablesConfiguration(
                     req.user!,
-                    req.params.projectUuid,
+                    getObjectValue(req.params, 'projectUuid'),
                 );
             res.json({
                 status: 'ok',
@@ -748,10 +307,11 @@ projectRouter.patch(
     unauthorisedInDemo,
     async (req, res, next) => {
         try {
-            const results: TablesConfiguration =
-                await projectService.updateTablesConfiguration(
+            const results: TablesConfiguration = await req.services
+                .getProjectService()
+                .updateTablesConfiguration(
                     req.user!,
-                    req.params.projectUuid,
+                    getObjectValue(req.params, 'projectUuid'),
                     req.body,
                 );
             res.json({
@@ -770,95 +330,12 @@ projectRouter.get(
     isAuthenticated,
     async (req, res, next) => {
         try {
-            const results = await projectService.hasSavedCharts(
-                req.user!,
-                req.params.projectUuid,
-            );
-            res.json({
-                status: 'ok',
-                results,
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-
-projectRouter.get(
-    '/access',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    async (req, res, next) => {
-        try {
-            const results = await projectService.getProjectAccess(
-                req.user!,
-                req.params.projectUuid,
-            );
-            res.json({
-                status: 'ok',
-                results,
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-
-projectRouter.post(
-    '/access',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        try {
-            const results = await projectService.createProjectAccess(
-                req.user!,
-                req.params.projectUuid,
-                req.body,
-            );
-            res.json({
-                status: 'ok',
-                results,
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-projectRouter.patch(
-    '/access/:userUuid',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        try {
-            const results = await projectService.updateProjectAccess(
-                req.user!,
-                req.params.projectUuid,
-                req.params.userUuid,
-                req.body,
-            );
-            res.json({
-                status: 'ok',
-                results,
-            });
-        } catch (e) {
-            next(e);
-        }
-    },
-);
-projectRouter.delete(
-    '/access/:userUuid',
-    allowApiKeyAuthentication,
-    isAuthenticated,
-    unauthorisedInDemo,
-    async (req, res, next) => {
-        try {
-            const results = await projectService.deleteProjectAccess(
-                req.user!,
-                req.params.projectUuid,
-                req.params.userUuid,
-            );
+            const results = await req.services
+                .getProjectService()
+                .hasSavedCharts(
+                    req.user!,
+                    getObjectValue(req.params, 'projectUuid'),
+                );
             res.json({
                 status: 'ok',
                 results,

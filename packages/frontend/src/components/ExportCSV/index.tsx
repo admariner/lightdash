@@ -1,18 +1,19 @@
+import { subject } from '@casl/ability';
 import {
-    Button,
-    ButtonProps,
-    DialogBody,
-    DialogFooter,
-    FormGroup,
-    Intent,
-    NumericInput,
-    Radio,
-    RadioGroup,
-} from '@blueprintjs/core';
-import { ResultRow } from '@lightdash/common';
-import { FC, Fragment, memo, useState } from 'react';
+    type ApiScheduledDownloadCsv,
+    type ResultRow,
+} from '@lightdash/common';
+import { Alert, Box, Button, NumberInput, Radio, Stack } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { IconTableExport } from '@tabler/icons-react';
+import { useMutation } from '@tanstack/react-query';
+import { memo, useState, type FC, type ReactNode } from 'react';
+import { pollCsvFileUrl } from '../../api/csv';
+import useHealth from '../../hooks/health/useHealth';
 import useToaster from '../../hooks/toaster/useToaster';
-import { InputWrapper, LimitWarning, Title } from './ExportCSV.styles';
+import useUser from '../../hooks/user/useUser';
+import { Can } from '../../providers/Ability';
+import MantineIcon from '../common/MantineIcon';
 
 enum Limit {
     TABLE = 'table',
@@ -25,127 +26,180 @@ enum Values {
     RAW = 'raw',
 }
 
-const ExportAsCSVButton: FC<ButtonProps> = ({ ...props }) => {
-    return (
-        <Button text="Export CSV" rightIcon="caret-down" minimal {...props} />
-    );
-};
-
 type ExportCsvRenderProps = {
-    onExport: () => Promise<void>;
+    onExport: () => Promise<unknown>;
     isExporting: boolean;
 };
 
 export type ExportCSVProps = {
+    projectUuid: string;
     rows: ResultRow[] | undefined;
-    getCsvLink: (limit: number | null, onlyRaw: boolean) => Promise<string>;
+    getCsvLink: (
+        limit: number | null,
+        onlyRaw: boolean,
+    ) => Promise<ApiScheduledDownloadCsv>;
     isDialogBody?: boolean;
-    renderDialogActions?: (renderProps: ExportCsvRenderProps) => JSX.Element;
+    renderDialogActions?: (renderProps: ExportCsvRenderProps) => ReactNode;
 };
 
 const ExportCSV: FC<ExportCSVProps> = memo(
-    ({ rows, getCsvLink, isDialogBody, renderDialogActions }) => {
-        const { showToastError } = useToaster();
+    ({ projectUuid, rows, getCsvLink, isDialogBody, renderDialogActions }) => {
+        const { showToastError, showToastInfo, showToastWarning } =
+            useToaster();
 
+        const user = useUser(true);
         const [limit, setLimit] = useState<string>(Limit.TABLE);
         const [customLimit, setCustomLimit] = useState<number>(1);
         const [format, setFormat] = useState<string>(Values.FORMATTED);
-        const [isExporting, setIsExporting] = useState<boolean>(false);
+        const health = useHealth();
+
+        const { isLoading: isExporting, mutateAsync: exportCsvMutation } =
+            useMutation(
+                [limit, customLimit, rows, format],
+                () =>
+                    getCsvLink(
+                        limit === Limit.CUSTOM
+                            ? customLimit
+                            : limit === Limit.TABLE
+                            ? rows?.length ?? 0
+                            : null,
+                        format === Values.RAW,
+                    ),
+                {
+                    onMutate: () => {
+                        showToastInfo({
+                            title: 'Exporting CSV',
+                            subtitle: 'This may take a few minutes...',
+                            loading: true,
+                            key: 'exporting-csv',
+                            autoClose: false,
+                        });
+                    },
+                    onSuccess: (scheduledCsvResponse) => {
+                        pollCsvFileUrl(scheduledCsvResponse)
+                            .then((csvFile) => {
+                                if (csvFile.url)
+                                    window.location.href = csvFile.url;
+                                notifications.hide('exporting-csv');
+
+                                if (csvFile.truncated) {
+                                    showToastWarning({
+                                        title: `The results in this export have been limited.`,
+                                        subtitle: `The export limit is ${health.data?.query.csvCellsLimit} cells, but your file exceeded that limit.`,
+                                    });
+                                }
+                            })
+                            .catch((error) => {
+                                notifications.hide('exporting-csv');
+
+                                showToastError({
+                                    title: `Unable to download CSV`,
+                                    subtitle: error?.error?.message,
+                                });
+                            });
+                    },
+                    onError: (error: { error: Error }) => {
+                        notifications.hide('exporting-csv');
+
+                        showToastError({
+                            title: `Unable to download CSV`,
+                            subtitle: error?.error?.message,
+                        });
+                    },
+                },
+            );
 
         if (!rows || rows.length <= 0) {
-            return <ExportAsCSVButton disabled />;
+            return <Alert color="gray">No data to export</Alert>;
         }
 
-        const Wrapper = isDialogBody ? DialogBody : Fragment;
-
-        const handleExport = async () => {
-            setIsExporting(true);
-
-            const url = await getCsvLink(
-                limit === Limit.CUSTOM
-                    ? customLimit
-                    : limit === Limit.TABLE
-                    ? rows.length
-                    : null,
-                format === Values.RAW,
-            ).catch((error) => {
-                showToastError({
-                    title: `Unable to download CSV`,
-                    subtitle: error?.error?.message,
-                });
-            });
-
-            setIsExporting(false);
-
-            if (url) window.open(url, '_blank');
-        };
-
         return (
-            <>
-                <Wrapper>
-                    <FormGroup>
-                        <RadioGroup
-                            label={<Title>Values</Title>}
-                            onChange={(e) => setFormat(e.currentTarget.value)}
-                            selectedValue={format}
-                        >
+            <Box>
+                <Stack
+                    spacing="xs"
+                    m={isDialogBody ? 'md' : undefined}
+                    miw={300}
+                >
+                    <Radio.Group
+                        label="Values"
+                        value={format}
+                        onChange={(val) => setFormat(val)}
+                    >
+                        <Stack spacing="xs" mt="xs">
                             <Radio label="Formatted" value={Values.FORMATTED} />
                             <Radio label="Raw" value={Values.RAW} />
-                        </RadioGroup>
-                    </FormGroup>
+                        </Stack>
+                    </Radio.Group>
 
-                    <FormGroup>
-                        <RadioGroup
-                            label={<Title>Limit</Title>}
-                            onChange={(e) => setLimit(e.currentTarget.value)}
-                            selectedValue={limit}
+                    <Can
+                        I="manage"
+                        this={subject('ChangeCsvResults', {
+                            organizationUuid: user.data?.organizationUuid,
+                            projectUuid: projectUuid,
+                        })}
+                    >
+                        <Radio.Group
+                            label="Limit"
+                            value={limit}
+                            onChange={(val) => setLimit(val)}
                         >
-                            <Radio
-                                label="Results in Table"
-                                value={Limit.TABLE}
-                            />
-                            <Radio label="All Results" value={Limit.ALL} />
-                            <Radio label="Custom..." value={Limit.CUSTOM} />
-                        </RadioGroup>
-                    </FormGroup>
+                            <Stack spacing="xs" mt="xs">
+                                <Radio
+                                    label="Results in Table"
+                                    value={Limit.TABLE}
+                                />
+                                <Radio label="All Results" value={Limit.ALL} />
+                                <Radio label="Custom..." value={Limit.CUSTOM} />
+                            </Stack>
+                        </Radio.Group>
+                    </Can>
 
                     {limit === Limit.CUSTOM && (
-                        <InputWrapper>
-                            <NumericInput
-                                value={customLimit}
-                                min={1}
-                                fill
-                                onValueChange={(value: any) =>
-                                    setCustomLimit(value)
-                                }
-                            />
-                        </InputWrapper>
+                        <NumberInput
+                            w="7xl"
+                            size="xs"
+                            min={1}
+                            precision={0}
+                            required
+                            value={customLimit}
+                            onChange={(value) => setCustomLimit(Number(value))}
+                        />
                     )}
-                </Wrapper>
-                {(limit === Limit.ALL || limit === Limit.CUSTOM) && (
-                    <LimitWarning>
-                        Results are limited to 100,000 cells for each file
-                    </LimitWarning>
-                )}
-                {isDialogBody && renderDialogActions ? (
-                    <DialogFooter
-                        actions={renderDialogActions({
-                            onExport: handleExport,
+
+                    {(limit === Limit.ALL || limit === Limit.CUSTOM) && (
+                        <Alert color="gray">
+                            Results are limited to{' '}
+                            {Number(
+                                health.data?.query.csvCellsLimit || 100000,
+                            ).toLocaleString()}{' '}
+                            cells for each file
+                        </Alert>
+                    )}
+                    {!isDialogBody && (
+                        <Button
+                            loading={isExporting}
+                            compact
+                            sx={{
+                                alignSelf: 'end',
+                            }}
+                            leftIcon={<MantineIcon icon={IconTableExport} />}
+                            onClick={() => exportCsvMutation()}
+                            data-testid="chart-export-csv-button"
+                        >
+                            Export CSV
+                        </Button>
+                    )}
+                </Stack>
+
+                {isDialogBody && renderDialogActions && (
+                    <>
+                        {renderDialogActions({
+                            onExport: exportCsvMutation,
                             isExporting,
                         })}
-                    />
-                ) : (
-                    <Button
-                        loading={isExporting}
-                        fill
-                        intent={Intent.PRIMARY}
-                        icon="export"
-                        onClick={handleExport}
-                    >
-                        Export CSV
-                    </Button>
+                    </>
                 )}
-            </>
+            </Box>
         );
     },
 );

@@ -1,61 +1,133 @@
 import {
     DashboardSearchResult,
+    DashboardTabResult,
     Explore,
     ExploreError,
+    ExploreType,
     FieldSearchResult,
-    hasIntersection,
-    isExploreError,
     NotExistsError,
     SavedChartSearchResult,
+    SearchFilters,
+    SearchItemType,
     SearchResults,
     SpaceSearchResult,
+    SqlChartSearchResult,
+    TableErrorSearchResult,
     TableSearchResult,
     TableSelectionType,
+    hasIntersection,
+    isDimension,
+    isExploreError,
+    type SemanticViewerChartSearchResults,
 } from '@lightdash/common';
 import { Knex } from 'knex';
-import { DashboardsTableName } from '../../database/entities/dashboards';
+import {
+    DashboardTabsTableName,
+    DashboardVersionsTableName,
+    DashboardsTableName,
+} from '../../database/entities/dashboards';
 import {
     CachedExploresTableName,
     ProjectTableName,
 } from '../../database/entities/projects';
 import { SavedChartsTableName } from '../../database/entities/savedCharts';
+import { SavedSemanticViewerChartsTableName } from '../../database/entities/savedSemanticViewerCharts';
+import { SavedSqlTableName } from '../../database/entities/savedSql';
 import { SpaceTableName } from '../../database/entities/spaces';
+import { UserTableName } from '../../database/entities/users';
+import {
+    filterByCreatedAt,
+    filterByCreatedByUuid,
+    shouldSearchForType,
+} from './utils/filters';
+import {
+    getFullTextSearchRankCalcSql,
+    getRegexFromUserQuery,
+    getTableOrFieldMatchCount,
+} from './utils/search';
 
-type ModelDependencies = {
+type SearchModelArguments = {
     database: Knex;
 };
+
+const SEARCH_LIMIT_PER_ITEM_TYPE = 10;
 
 export class SearchModel {
     private database: Knex;
 
-    constructor(deps: ModelDependencies) {
-        this.database = deps.database;
+    constructor(args: SearchModelArguments) {
+        this.database = args.database;
     }
 
     private async searchSpaces(
         projectUuid: string,
         query: string,
+        filters?: SearchFilters,
     ): Promise<SpaceSearchResult[]> {
-        return this.database(SpaceTableName)
-            .select()
+        if (!shouldSearchForType(SearchItemType.SPACE, filters?.type)) {
+            return [];
+        }
+
+        const searchRankRawSql = getFullTextSearchRankCalcSql({
+            database: this.database,
+            variables: {
+                searchVectorColumn: `${SpaceTableName}.search_vector`,
+                searchQuery: query,
+            },
+        });
+
+        let subquery = this.database(SpaceTableName)
             .innerJoin(
                 ProjectTableName,
                 `${ProjectTableName}.project_id`,
                 `${SpaceTableName}.project_id`,
             )
-            .column({ uuid: 'space_uuid' }, 'spaces.name')
+            .column({ uuid: 'space_uuid' }, 'spaces.name', {
+                search_rank: searchRankRawSql,
+            })
             .where('projects.project_uuid', projectUuid)
-            .andWhereRaw(`LOWER(${SpaceTableName}.name) like LOWER(?)`, [
-                `%${query}%`,
-            ]);
+            .orderBy('search_rank', 'desc');
+
+        subquery = filterByCreatedAt(SpaceTableName, subquery, filters);
+        subquery = filterByCreatedByUuid(
+            subquery,
+            {
+                join: {
+                    joinTableName: UserTableName,
+                    joinTableIdColumnName: 'user_id',
+                    joinTableUserUuidColumnName: 'user_uuid',
+                    tableIdColumnName: 'created_by_user_id',
+                },
+                tableName: SpaceTableName,
+            },
+            filters,
+        );
+
+        return this.database(SpaceTableName)
+            .select()
+            .from(subquery.as('spaces_with_rank'))
+            .where('search_rank', '>', 0)
+            .limit(10);
     }
 
     private async searchDashboards(
         projectUuid: string,
         query: string,
+        filters?: SearchFilters,
     ): Promise<DashboardSearchResult[]> {
-        return this.database(DashboardsTableName)
-            .select()
+        if (!shouldSearchForType(SearchItemType.DASHBOARD, filters?.type)) {
+            return [];
+        }
+
+        const searchRankRawSql = getFullTextSearchRankCalcSql({
+            database: this.database,
+            variables: {
+                searchVectorColumn: `${DashboardsTableName}.search_vector`,
+                searchQuery: query,
+            },
+        });
+
+        let subquery = this.database(DashboardsTableName)
             .leftJoin(
                 SpaceTableName,
                 `${DashboardsTableName}.space_id`,
@@ -71,32 +143,256 @@ export class SearchModel {
                 `${DashboardsTableName}.name`,
                 `${DashboardsTableName}.description`,
                 { spaceUuid: 'space_uuid' },
+                { search_rank: searchRankRawSql },
             )
             .where(`${ProjectTableName}.project_uuid`, projectUuid)
-            .andWhere((qB) =>
-                qB
-                    .whereRaw(
-                        `LOWER(${DashboardsTableName}.name) like LOWER(?)`,
-                        [`%${query}%`],
-                    )
-                    .orWhereRaw(
-                        `LOWER(${DashboardsTableName}.description) like LOWER(?)`,
-                        [`%${query}%`],
-                    ),
+            .orderBy('search_rank', 'desc');
+
+        subquery = filterByCreatedAt(DashboardsTableName, subquery, filters);
+        subquery = filterByCreatedByUuid(
+            subquery,
+            {
+                join: {
+                    isVersioned: true,
+                    joinTableName: DashboardVersionsTableName,
+                    joinTableIdColumnName: 'dashboard_id',
+                    joinTableUserUuidColumnName: 'updated_by_user_uuid',
+                    tableIdColumnName: 'dashboard_id',
+                },
+                tableName: DashboardsTableName,
+            },
+            filters,
+        );
+
+        const dashboards = await this.database(DashboardsTableName)
+            .select()
+            .from(subquery.as('dashboards_with_rank'))
+            .where('search_rank', '>', 0)
+            .limit(10);
+
+        const dashboardUuids = dashboards.map((dashboard) => dashboard.uuid);
+
+        const validationErrors = await this.database('validations')
+            .where('project_uuid', projectUuid)
+            .whereNull('job_id')
+            .whereIn('dashboard_uuid', dashboardUuids)
+            .andWhereNot('dashboard_uuid', null)
+            .select('validation_id', 'dashboard_uuid')
+            .then((rows) =>
+                rows.reduce<Record<string, Array<{ validationId: number }>>>(
+                    (acc, row) => {
+                        if (row.dashboard_uuid) {
+                            acc[row.dashboard_uuid] = [
+                                ...(acc[row.dashboard_uuid] ?? []),
+                                { validationId: row.validation_id },
+                            ];
+                        }
+                        return acc;
+                    },
+                    {},
+                ),
             );
+
+        return dashboards.map((dashboard) => ({
+            ...dashboard,
+            validationErrors: validationErrors[dashboard.uuid] || [],
+        }));
+    }
+
+    private async searchDashboardTabs(
+        projectUuid: string,
+        query: string,
+        filters?: SearchFilters,
+    ): Promise<DashboardTabResult[]> {
+        if (!shouldSearchForType(SearchItemType.DASHBOARD_TAB, filters?.type)) {
+            return [];
+        }
+
+        const dashboardTabs = await this.database(DashboardTabsTableName)
+            .innerJoin(
+                DashboardsTableName,
+                `${DashboardsTableName}.dashboard_id`,
+                `${DashboardTabsTableName}.dashboard_id`,
+            )
+            .leftJoin(
+                SpaceTableName,
+                `${DashboardsTableName}.space_id`,
+                `${SpaceTableName}.space_id`,
+            )
+            .innerJoin(
+                ProjectTableName,
+                `${ProjectTableName}.project_id`,
+                `${SpaceTableName}.project_id`,
+            )
+            .column<DashboardTabResult[]>(
+                { uuid: `${DashboardTabsTableName}.uuid` },
+                { name: `${DashboardTabsTableName}.name` },
+                { dashboardUuid: `${DashboardsTableName}.dashboard_uuid` },
+                { dashboardName: `${DashboardsTableName}.name` },
+                { spaceUuid: `${SpaceTableName}.space_uuid` },
+            )
+            .where(`${ProjectTableName}.project_uuid`, projectUuid)
+            .andWhere(`${DashboardTabsTableName}.name`, 'ilike', `%${query}%`)
+            .distinctOn(`${DashboardTabsTableName}.uuid`);
+
+        return dashboardTabs;
+    }
+
+    private async searchCharts(
+        searchTable: {
+            name: string;
+            uuidColumnName: string;
+        },
+        projectUuid: string,
+        query: string,
+        filters?: SearchFilters,
+    ) {
+        const { name: tableName, uuidColumnName } = searchTable;
+
+        const searchRankRawSql = getFullTextSearchRankCalcSql({
+            database: this.database,
+            variables: {
+                searchVectorColumn: `${tableName}.search_vector`,
+                searchQuery: query,
+            },
+        });
+
+        // Needs to be a subquery to be able to use the search rank column to filter out 0 rank results
+        let subquery = this.database(tableName)
+            .leftJoin(
+                DashboardsTableName,
+                `${tableName}.dashboard_uuid`,
+                `${DashboardsTableName}.dashboard_uuid`,
+            )
+            .leftJoin(SpaceTableName, function joinSpaces() {
+                this.on(
+                    `${tableName}.space_uuid`,
+                    '=',
+                    `${SpaceTableName}.space_uuid`,
+                );
+                this.orOn(
+                    `${DashboardsTableName}.space_id`,
+                    '=',
+                    `${SpaceTableName}.space_id`,
+                );
+            })
+            .innerJoin(
+                ProjectTableName,
+                `${ProjectTableName}.project_id`,
+                `${SpaceTableName}.project_id`,
+            )
+            .column(
+                { uuid: uuidColumnName },
+                `${tableName}.slug`,
+                `${tableName}.name`,
+                `${tableName}.description`,
+                {
+                    chartType: `${tableName}.last_version_chart_kind`,
+                },
+                { spaceUuid: `${tableName}.space_uuid` },
+                { search_rank: searchRankRawSql },
+            )
+            .where(`${ProjectTableName}.project_uuid`, projectUuid)
+            .orderBy('search_rank', 'desc');
+
+        subquery = filterByCreatedAt(tableName, subquery, filters);
+        subquery = filterByCreatedByUuid(
+            subquery,
+            {
+                tableName,
+                tableUserUuidColumnName: 'last_version_updated_by_user_uuid',
+            },
+            filters,
+        );
+
+        return this.database(tableName)
+            .select()
+            .from(subquery.as('saved_charts_with_rank'))
+            .where('search_rank', '>', 0)
+            .limit(10);
+    }
+
+    private async searchSqlCharts(
+        projectUuid: string,
+        query: string,
+        filters?: SearchFilters,
+    ): Promise<SqlChartSearchResult[]> {
+        if (!shouldSearchForType(SearchItemType.SQL_CHART, filters?.type)) {
+            return [];
+        }
+
+        return this.searchCharts(
+            {
+                name: SavedSqlTableName,
+                uuidColumnName: 'saved_sql_uuid',
+            },
+            projectUuid,
+            query,
+            filters,
+        );
+    }
+
+    private async searchSemanticViewerCharts(
+        projectUuid: string,
+        query: string,
+        filters?: SearchFilters,
+    ): Promise<SemanticViewerChartSearchResults[]> {
+        if (
+            !shouldSearchForType(
+                SearchItemType.SEMANTIC_VIEWER_CHART,
+                filters?.type,
+            )
+        ) {
+            return [];
+        }
+
+        return this.searchCharts(
+            {
+                name: SavedSemanticViewerChartsTableName,
+                uuidColumnName: 'saved_semantic_viewer_chart_uuid',
+            },
+            projectUuid,
+            query,
+            filters,
+        );
     }
 
     private async searchSavedCharts(
         projectUuid: string,
         query: string,
+        filters?: SearchFilters,
     ): Promise<SavedChartSearchResult[]> {
-        return this.database(SavedChartsTableName)
-            .select()
+        if (!shouldSearchForType(SearchItemType.CHART, filters?.type)) {
+            return [];
+        }
+
+        const searchRankRawSql = getFullTextSearchRankCalcSql({
+            database: this.database,
+            variables: {
+                searchVectorColumn: `${SavedChartsTableName}.search_vector`,
+                searchQuery: query,
+            },
+        });
+
+        // Needs to be a subquery to be able to use the search rank column to filter out 0 rank results
+        let subquery = this.database(SavedChartsTableName)
             .leftJoin(
-                SpaceTableName,
-                `${SavedChartsTableName}.space_id`,
-                `${SpaceTableName}.space_id`,
+                DashboardsTableName,
+                `${SavedChartsTableName}.dashboard_uuid`,
+                `${DashboardsTableName}.dashboard_uuid`,
             )
+            .leftJoin(SpaceTableName, function joinSpaces() {
+                this.on(
+                    `${SavedChartsTableName}.space_id`,
+                    '=',
+                    `${SpaceTableName}.space_id`,
+                );
+                this.orOn(
+                    `${DashboardsTableName}.space_id`,
+                    '=',
+                    `${SpaceTableName}.space_id`,
+                );
+            })
             .innerJoin(
                 ProjectTableName,
                 `${ProjectTableName}.project_id`,
@@ -106,20 +402,58 @@ export class SearchModel {
                 { uuid: 'saved_query_uuid' },
                 `${SavedChartsTableName}.name`,
                 `${SavedChartsTableName}.description`,
+                {
+                    chartType: `${SavedChartsTableName}.last_version_chart_kind`,
+                },
                 { spaceUuid: 'space_uuid' },
+                { search_rank: searchRankRawSql },
             )
             .where(`${ProjectTableName}.project_uuid`, projectUuid)
-            .andWhere((qB) =>
-                qB
-                    .whereRaw(
-                        `LOWER(${SavedChartsTableName}.name) like LOWER(?)`,
-                        [`%${query}%`],
-                    )
-                    .orWhereRaw(
-                        `LOWER(${SavedChartsTableName}.description) like LOWER(?)`,
-                        [`%${query}%`],
-                    ),
+            .orderBy('search_rank', 'desc');
+
+        subquery = filterByCreatedAt(SavedChartsTableName, subquery, filters);
+        subquery = filterByCreatedByUuid(
+            subquery,
+            {
+                tableName: SavedChartsTableName,
+                tableUserUuidColumnName: 'last_version_updated_by_user_uuid',
+            },
+            filters,
+        );
+
+        const savedCharts = await this.database(SavedChartsTableName)
+            .select()
+            .from(subquery.as('saved_charts_with_rank'))
+            .where('search_rank', '>', 0)
+            .limit(10);
+
+        const chartUuids = savedCharts.map((chart) => chart.uuid);
+
+        const validationErrors = await this.database('validations')
+            .where('project_uuid', projectUuid)
+            .whereNull('job_id')
+            .whereIn('saved_chart_uuid', chartUuids)
+            .andWhereNot('saved_chart_uuid', null)
+            .select('validation_id', 'saved_chart_uuid')
+            .then((rows) =>
+                rows.reduce<Record<string, Array<{ validationId: number }>>>(
+                    (acc, row) => {
+                        if (row.saved_chart_uuid) {
+                            acc[row.saved_chart_uuid] = [
+                                ...(acc[row.saved_chart_uuid] ?? []),
+                                { validationId: row.validation_id },
+                            ];
+                        }
+                        return acc;
+                    },
+                    {},
+                ),
             );
+
+        return savedCharts.map((chart) => ({
+            ...chart,
+            validationErrors: validationErrors[chart.uuid] || [],
+        }));
     }
 
     private async getProjectExplores(projectUuid: string): Promise<Explore[]> {
@@ -145,97 +479,175 @@ export class SearchModel {
         if (explores.length > 0 && explores[0].explores) {
             return explores[0].explores.filter(
                 (explore: Explore | ExploreError) => {
-                    if (!isExploreError(explore)) {
-                        if (
-                            tableSelection.type === TableSelectionType.WITH_TAGS
-                        ) {
-                            return hasIntersection(
+                    if (tableSelection.type === TableSelectionType.WITH_TAGS) {
+                        return (
+                            hasIntersection(
                                 explore.tags || [],
                                 tableSelection.value || [],
-                            );
-                        }
-                        if (
-                            tableSelection.type ===
-                            TableSelectionType.WITH_NAMES
-                        ) {
-                            return (tableSelection.value || []).includes(
-                                explore.name,
-                            );
-                        }
-                        return true;
+                            ) || explore.type === ExploreType.VIRTUAL
+                        );
                     }
-                    return false;
+                    if (tableSelection.type === TableSelectionType.WITH_NAMES) {
+                        return (
+                            (tableSelection.value || []).includes(
+                                explore.name,
+                            ) || explore.type === ExploreType.VIRTUAL
+                        );
+                    }
+                    return true;
                 },
             );
         }
         return [];
     }
 
-    private async searchTablesAndFields(
-        projectUuid: string,
+    static searchTablesAndFields(
         query: string,
-    ): Promise<[TableSearchResult[], FieldSearchResult[]]> {
-        const explores = await this.getProjectExplores(projectUuid);
-        const lowerCaseQuery = query.toLowerCase();
-        return explores.reduce<[TableSearchResult[], FieldSearchResult[]]>(
-            (acc, explore) =>
-                Object.values(explore.tables).reduce<
-                    [TableSearchResult[], FieldSearchResult[]]
-                >(([tables, fields], table) => {
-                    if (
-                        table.label.toLowerCase().includes(lowerCaseQuery) ||
-                        table.description
-                            ?.toLowerCase()
-                            .includes(lowerCaseQuery)
-                    ) {
-                        tables.push({
-                            name: table.name,
-                            label: table.label,
-                            description: table.description,
-                            explore: explore.name,
-                            exploreLabel: explore.label,
-                        });
-                    }
-                    [
-                        ...Object.values(table.dimensions),
-                        ...Object.values(table.metrics),
-                    ].forEach((field) => {
-                        if (
-                            !field.hidden &&
-                            (field.label
-                                .toLowerCase()
-                                .includes(lowerCaseQuery) ||
-                                field.description
-                                    ?.toLowerCase()
-                                    .includes(lowerCaseQuery))
-                        ) {
-                            fields.push({
-                                name: field.name,
-                                label: field.label,
-                                description: field.description,
-                                type: field.type,
-                                fieldType: field.fieldType,
-                                table: field.table,
-                                tableLabel: field.tableLabel,
+        explores: Explore[],
+        filters?: SearchFilters,
+    ): [TableSearchResult[], FieldSearchResult[]] {
+        const shouldSearchForTables = shouldSearchForType(
+            SearchItemType.TABLE,
+            filters?.type,
+        );
+
+        const shouldSearchForFields = shouldSearchForType(
+            SearchItemType.FIELD,
+            filters?.type,
+        );
+
+        // Building regex to match any of the words in the query and then using it to match against the label and description
+        // results are sorted by the number of matches - we create a set out of the matches to remove duplicates
+        const queryRegex = getRegexFromUserQuery(query);
+
+        const [unsortedTables, unsortedFields] = explores
+            .filter((explore) => !isExploreError(explore))
+            .reduce<[TableSearchResult[], FieldSearchResult[]]>(
+                (acc, explore) =>
+                    Object.values(explore.tables).reduce<
+                        [TableSearchResult[], FieldSearchResult[]]
+                    >(([tables, fields], table) => {
+                        const tableRegexMatchCount = getTableOrFieldMatchCount(
+                            queryRegex,
+                            table,
+                        );
+
+                        if (shouldSearchForTables && tableRegexMatchCount > 0) {
+                            tables.push({
+                                name: table.name,
+                                label: table.label,
+                                description: table.description,
                                 explore: explore.name,
                                 exploreLabel: explore.label,
+                                requiredAttributes: table.requiredAttributes,
+                                regexMatchCount: tableRegexMatchCount,
                             });
                         }
-                    });
-                    return [tables, fields];
-                }, acc),
-            [[], []],
-        );
+
+                        if (shouldSearchForFields) {
+                            [
+                                ...Object.values(table.dimensions),
+                                ...Object.values(table.metrics),
+                            ].forEach((field) => {
+                                const fieldRegexMatchCount =
+                                    getTableOrFieldMatchCount(
+                                        queryRegex,
+                                        field,
+                                    );
+
+                                if (!field.hidden && fieldRegexMatchCount > 0) {
+                                    fields.push({
+                                        name: field.name,
+                                        label: field.label,
+                                        description: field.description,
+                                        type: field.type,
+                                        fieldType: field.fieldType,
+                                        table: field.table,
+                                        tableLabel: field.tableLabel,
+                                        explore: explore.name,
+                                        exploreLabel: explore.label,
+                                        requiredAttributes: isDimension(field)
+                                            ? field.requiredAttributes
+                                            : undefined,
+                                        tablesRequiredAttributes:
+                                            field.tablesRequiredAttributes,
+                                        regexMatchCount: fieldRegexMatchCount,
+                                    });
+                                }
+                            });
+                        }
+
+                        return [tables, fields];
+                    }, acc),
+                [[], []],
+            );
+
+        const sortedTables = unsortedTables
+            .sort((a, b) => b.regexMatchCount - a.regexMatchCount)
+            .slice(0, SEARCH_LIMIT_PER_ITEM_TYPE);
+
+        const sortedFields = unsortedFields
+            .sort((a, b) => b.regexMatchCount - a.regexMatchCount)
+            .slice(0, SEARCH_LIMIT_PER_ITEM_TYPE);
+
+        return [sortedTables, sortedFields];
     }
 
-    async search(projectUuid: string, query: string): Promise<SearchResults> {
-        const spaces = await this.searchSpaces(projectUuid, query);
-        const dashboards = await this.searchDashboards(projectUuid, query);
-        const savedCharts = await this.searchSavedCharts(projectUuid, query);
-        const [tables, fields] = await this.searchTablesAndFields(
-            projectUuid,
-            query,
-        );
+    private async searchTableErrors(
+        projectUuid: string,
+        query: string,
+        explores: Explore[],
+    ): Promise<TableErrorSearchResult[]> {
+        const lowerCaseQuery = query.toLowerCase();
+
+        const validationErrors = await this.database('validations')
+            .where('project_uuid', projectUuid)
+            .whereNull('job_id')
+            .whereNotNull('model_name')
+            .select('validation_id', 'model_name')
+            .then((rows) =>
+                rows.reduce<Record<string, Array<{ validationId: number }>>>(
+                    (acc, row) => {
+                        if (row.model_name) {
+                            acc[row.model_name] = [
+                                ...(acc[row.model_name] ?? []),
+                                { validationId: row.validation_id },
+                            ];
+                        }
+                        return acc;
+                    },
+                    {},
+                ),
+            );
+
+        return explores.reduce<TableErrorSearchResult[]>((acc, explore) => {
+            if (
+                isExploreError(explore) &&
+                explore.name.toLowerCase().includes(lowerCaseQuery) &&
+                explore.name in validationErrors
+            ) {
+                return [
+                    ...acc,
+                    {
+                        explore: explore.name,
+                        exploreLabel: explore.label,
+                        validationErrors: validationErrors[explore.name],
+                    },
+                ];
+            }
+            return acc;
+        }, []);
+    }
+
+    private static searchPages(
+        projectUuid: string,
+        query: string,
+        filters?: SearchFilters,
+    ) {
+        if (!shouldSearchForType(SearchItemType.PAGE, filters?.type)) {
+            return [];
+        }
+
         const allPages = [
             {
                 uuid: `user-activity`,
@@ -243,17 +655,68 @@ export class SearchModel {
                 url: `/projects/${projectUuid}/user-activity`,
             },
         ];
-        const pages = allPages.filter((page) =>
+
+        return allPages.filter((page) =>
             page.name?.toLowerCase().includes(query.toLowerCase()),
         );
+    }
+
+    async search(
+        projectUuid: string,
+        query: string,
+        filters?: SearchFilters,
+    ): Promise<SearchResults> {
+        const spaces = await this.searchSpaces(projectUuid, query, filters);
+        const dashboards = await this.searchDashboards(
+            projectUuid,
+            query,
+            filters,
+        );
+        const savedCharts = await this.searchSavedCharts(
+            projectUuid,
+            query,
+            filters,
+        );
+        const sqlCharts = await this.searchSqlCharts(
+            projectUuid,
+            query,
+            filters,
+        );
+        const dashboardTabs = await this.searchDashboardTabs(
+            projectUuid,
+            query,
+            filters,
+        );
+        const semanticViewerCharts = await this.searchSemanticViewerCharts(
+            projectUuid,
+            query,
+            filters,
+        );
+        const explores = await this.getProjectExplores(projectUuid);
+        const tableErrors = await this.searchTableErrors(
+            projectUuid,
+            query,
+            explores,
+        );
+        const [tables, fields] = SearchModel.searchTablesAndFields(
+            query,
+            explores,
+            filters,
+        );
+
+        const tablesAndErrors = [...tables, ...tableErrors];
+        const pages = SearchModel.searchPages(projectUuid, query, filters);
 
         return {
             spaces,
             dashboards,
             savedCharts,
-            tables,
+            sqlCharts,
+            semanticViewerCharts,
+            tables: tablesAndErrors,
             fields,
             pages,
+            dashboardTabs,
         };
     }
 }

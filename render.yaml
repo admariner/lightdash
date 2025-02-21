@@ -1,14 +1,20 @@
 previewsEnabled: true
 
 databases:
-  - name: jaffle_db
+  - name: jaffle_db_pg_13
     ipAllowList: []
+    postgresMajorVersion: 13
+    plan: standard
+    previewPlan: basic-256mb
 
 services:
   - type: pserv
     env: docker
     name: headless-browser
     dockerfilePath: docker/Dockerfile.headless-browser
+    envVars:
+      - key: CONNECTION_TIMEOUT
+        value: 300000 # 5 minutes
   - type: web
     env: docker
     name: lightdash
@@ -20,23 +26,23 @@ services:
       - fromGroup: pr-settings
       - key: PGHOST
         fromDatabase:
-          name: jaffle_db
+          name: jaffle_db_pg_13
           property: host
       - key: PGPORT
         fromDatabase:
-          name: jaffle_db
+          name: jaffle_db_pg_13
           property: port
       - key: PGDATABASE
         fromDatabase:
-          name: jaffle_db
+          name: jaffle_db_pg_13
           property: database
       - key: PGUSER
         fromDatabase:
-          name: jaffle_db
+          name: jaffle_db_pg_13
           property: user
       - key: PGPASSWORD
         fromDatabase:
-          name: jaffle_db
+          name: jaffle_db_pg_13
           property: password
       - key: LIGHTDASH_SECRET
         generateValue: true
@@ -54,3 +60,7 @@ services:
           type: pserv
           name: headless-browser
           property: host
+      - key: GROUPS_ENABLED
+        value: true
+      - key: EXTENDED_USAGE_ANALYTICS
+        value: true

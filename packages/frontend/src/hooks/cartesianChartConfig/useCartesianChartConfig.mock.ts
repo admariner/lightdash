@@ -1,14 +1,15 @@
 import {
     CartesianSeriesType,
-    CompiledDimension,
-    CompiledTable,
+    ChartType,
     DimensionType,
-    Explore,
     FieldType,
-    Series,
     SupportedDbtAdapter,
+    type CompiledDimension,
+    type CompiledTable,
+    type Explore,
+    type Series,
 } from '@lightdash/common';
-import { GetExpectedSeriesMapArgs } from './utils';
+import { type GetExpectedSeriesMapArgs } from './utils';
 
 const generateCompiledDimension = (
     name: string,
@@ -63,12 +64,16 @@ export const simpleSeriesMapArgs: GetExpectedSeriesMapArgs = {
     isStacked: false,
     resultsData: {
         metricQuery: {
+            exploreName: '',
             dimensions: ['dimension_x'],
             metrics: [],
             filters: {},
             sorts: [],
             limit: 10,
             tableCalculations: [],
+        },
+        cacheMetadata: {
+            cacheHit: false,
         },
         rows: [
             {
@@ -84,6 +89,7 @@ export const simpleSeriesMapArgs: GetExpectedSeriesMapArgs = {
                 my_second_metric: { value: { raw: 'a', formatted: 'a' } },
             },
         ],
+        fields: {},
     },
     pivotKeys: undefined,
     yFields: ['my_metric', 'my_second_metric'],
@@ -93,9 +99,13 @@ export const simpleSeriesMapArgs: GetExpectedSeriesMapArgs = {
 
 export const expectedSimpleSeriesMap: Record<string, Series> = {
     'my_dimension|my_metric': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -106,9 +116,13 @@ export const expectedSimpleSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_second_metric': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -127,9 +141,13 @@ export const pivotSeriesMapArgs: GetExpectedSeriesMapArgs = {
 
 export const expectedPivotedSeriesMap: Record<string, Series> = {
     'my_dimension|my_metric.dimension_x.a': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -141,9 +159,13 @@ export const expectedPivotedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_metric.dimension_x.b': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -155,9 +177,13 @@ export const expectedPivotedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_second_metric.dimension_x.a': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -169,9 +195,13 @@ export const expectedPivotedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_second_metric.dimension_x.b': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -190,12 +220,16 @@ export const multiPivotSeriesMapArgs: GetExpectedSeriesMapArgs = {
     yFields: ['my_metric'],
     resultsData: {
         metricQuery: {
+            exploreName: '',
             dimensions: ['dimension_x', 'dimension_y'],
             metrics: [],
             filters: {},
             sorts: [],
             limit: 10,
             tableCalculations: [],
+        },
+        cacheMetadata: {
+            cacheHit: false,
         },
         rows: [
             {
@@ -223,14 +257,19 @@ export const multiPivotSeriesMapArgs: GetExpectedSeriesMapArgs = {
                 my_metric: { value: { raw: 'a', formatted: 'a' } },
             },
         ],
+        fields: {},
     },
 };
 
 export const expectedMultiPivotedSeriesMap: Record<string, Series> = {
     'my_dimension|my_metric.dimension_x.a.dimension_y.a': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
+        showSymbol: undefined,
+        smooth: undefined,
         areaStyle: undefined,
         stack: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -245,9 +284,13 @@ export const expectedMultiPivotedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_metric.dimension_x.b.dimension_y.a': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -262,9 +305,13 @@ export const expectedMultiPivotedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_metric.dimension_x.b.dimension_y.b': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
         stack: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -279,9 +326,13 @@ export const expectedMultiPivotedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_metric.dimension_x.a.dimension_y.b': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -299,9 +350,13 @@ export const expectedMultiPivotedSeriesMap: Record<string, Series> = {
 
 export const existingMixedSeries: Series[] = [
     {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -313,8 +368,12 @@ export const existingMixedSeries: Series[] = [
         hidden: true,
     },
     {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         stack: undefined,
         encode: {
             xRef: {
@@ -331,9 +390,13 @@ export const existingMixedSeries: Series[] = [
 
 export const expectedMixedSeriesMap: Record<string, Series> = {
     'my_dimension|my_second_dimension': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -344,9 +407,13 @@ export const expectedMixedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_metric.dimension_x.a': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -358,8 +425,12 @@ export const expectedMixedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_metric.dimension_x.b': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         stack: undefined,
         encode: {
             xRef: {
@@ -372,9 +443,13 @@ export const expectedMixedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_second_metric.dimension_x.a': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -386,9 +461,13 @@ export const expectedMixedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_second_metric.dimension_x.b': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -400,9 +479,13 @@ export const expectedMixedSeriesMap: Record<string, Series> = {
         },
     },
     'my_dimension|my_third_dimension': {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -416,9 +499,13 @@ export const expectedMixedSeriesMap: Record<string, Series> = {
 
 export const mergedMixedSeries: Series[] = [
     {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -428,11 +515,16 @@ export const mergedMixedSeries: Series[] = [
             },
         },
         hidden: true,
+        isFilteredOut: false,
     },
     {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -443,11 +535,16 @@ export const mergedMixedSeries: Series[] = [
             },
         },
         name: 'custom label',
+        isFilteredOut: false,
     },
     {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -459,9 +556,13 @@ export const mergedMixedSeries: Series[] = [
         },
     },
     {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -473,9 +574,13 @@ export const mergedMixedSeries: Series[] = [
         },
     },
     {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -487,9 +592,13 @@ export const mergedMixedSeries: Series[] = [
         },
     },
     {
+        label: undefined,
         type: CartesianSeriesType.BAR,
         areaStyle: undefined,
         stack: undefined,
+        showSymbol: undefined,
+        smooth: undefined,
+        yAxisIndex: 0,
         encode: {
             xRef: {
                 field: 'my_dimension',
@@ -519,3 +628,40 @@ export const groupedMixedSeries: Array<{ index: number; value: Series[] }> = [
         value: [mergedMixedSeries[5]],
     },
 ];
+
+export const useCartesianChartConfigParamsMock = {
+    pivotKeys: undefined,
+    setPivotDimensions: () => {},
+    chartType: ChartType.CARTESIAN,
+    initialChartConfig: {
+        layout: {
+            xField: 'orders_customer_id',
+            yField: ['orders_total_order_amount', 'orders_fulfillment_rate'],
+        },
+        eChartsConfig: {
+            series: [],
+        },
+    },
+    resultsData: {
+        rows: [],
+        metricQuery: {
+            dimensions: ['orders_customer_id'],
+            metrics: ['orders_total_order_amount', 'orders_fulfillment_rate'],
+            filters: {},
+            sorts: [
+                {
+                    fieldId: 'orders_total_order_amount',
+                    descending: true,
+                },
+            ],
+            limit: 500,
+            tableCalculations: [],
+            additionalMetrics: [],
+        },
+    },
+    columnOrder: [
+        'orders_customer_id',
+        'orders_total_order_amount',
+        'orders_fulfillment_rate',
+    ],
+};

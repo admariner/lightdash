@@ -1,3 +1,11 @@
+import {
+    type ResourceViewChartItem,
+    type ResourceViewDashboardItem,
+    type ResourceViewItem,
+    type ResourceViewItemType,
+    type ResourceViewSpaceItem,
+} from './resourceViewItem';
+
 export type PinnedList = {
     pinnedListUuid: string;
     projectUuid: string;
@@ -56,6 +64,11 @@ export type CreatePinnedItem =
     | CreateDashboardPinnedItem
     | CreateSpacePinnedItem;
 
+export type UpdatePinnedItemOrder = {
+    type: ResourceViewItemType;
+    data: Pick<ResourceViewItem['data'], 'uuid' | 'pinnedListOrder'>;
+};
+
 export const isCreateChartPinnedItem = (
     item: CreatePinnedItem,
 ): item is CreateChartPinnedItem =>
@@ -73,3 +86,24 @@ export const isCreateSpacePinnedItem = (
 export const isDeleteSpacePinnedItem = (
     item: DeletePinnedItem,
 ): item is DeleteSpacePinnedItem => 'spaceUuid' in item && !!item.spaceUuid;
+
+export type ApiPinnedItems = {
+    status: 'ok';
+    results: PinnedItems;
+};
+
+export type PinnedItems = Array<
+    ResourceViewDashboardItem | ResourceViewChartItem | ResourceViewSpaceItem
+>;
+
+export type TogglePinnedItemInfo = {
+    pinnedListUuid: string;
+    projectUuid: string;
+    spaceUuid: string;
+    isPinned: boolean;
+};
+
+export type ApiTogglePinnedItem = {
+    status: 'ok';
+    results: TogglePinnedItemInfo;
+};

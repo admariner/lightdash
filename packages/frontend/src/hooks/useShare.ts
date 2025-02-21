@@ -1,5 +1,9 @@
-import { ApiError, CreateShareUrl, ShareUrl } from '@lightdash/common';
-import { useMutation, useQuery } from 'react-query';
+import {
+    type ApiError,
+    type CreateShareUrl,
+    type ShareUrl,
+} from '@lightdash/common';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { lightdashApi } from '../api';
 
 const getShare = async (shareNanoid: string) =>
@@ -9,10 +13,11 @@ const getShare = async (shareNanoid: string) =>
         body: undefined,
     });
 
-export const useGetShare = (shareNanoid: string) =>
+export const useGetShare = (shareNanoid?: string) =>
     useQuery<ShareUrl, ApiError>({
         queryKey: ['share', shareNanoid],
-        queryFn: () => getShare(shareNanoid),
+        queryFn: () => getShare(shareNanoid!),
+        enabled: shareNanoid !== undefined,
         retry: false,
     });
 
@@ -28,8 +33,8 @@ export const useCreateShareMutation = () => {
         (data) => createShareUrl(data),
         {
             //mutationKey: ['share'],
-            onSuccess: async (space) => {},
-            onError: (error) => {},
+            onSuccess: async () => {},
+            onError: () => {},
         },
     );
 };

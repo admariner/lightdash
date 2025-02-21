@@ -1,18 +1,17 @@
-import { ResultRow } from '@lightdash/common';
-import { flexRender, HeaderGroup } from '@tanstack/react-table';
-import React, { FC, MutableRefObject } from 'react';
-import { DragDropContext, Droppable } from 'react-beautiful-dnd';
-import { useTableContext } from '../TableProvider';
-import { ROW_NUMBER_COLUMN_ID } from '../types';
+import { DragDropContext, Droppable } from '@hello-pangea/dnd';
+import { type ResultRow } from '@lightdash/common';
+import { flexRender, type HeaderGroup } from '@tanstack/react-table';
+import React, { type FC, type MutableRefObject } from 'react';
+import { ROW_NUMBER_COLUMN_ID } from '../constants';
+import { useTableContext } from '../useTableContext';
 
 type HeaderDndContextProps = {
     colOrderRef: MutableRefObject<string[]>;
 };
 
-export const HeaderDndContext: FC<HeaderDndContextProps> = ({
-    colOrderRef,
-    children,
-}) => {
+export const HeaderDndContext: FC<
+    React.PropsWithChildren<HeaderDndContextProps>
+> = ({ colOrderRef, children }) => {
     const { table, onColumnOrderChange } = useTableContext();
     return (
         <DragDropContext
@@ -51,10 +50,9 @@ type HeaderDroppableProps = {
     headerGroup: HeaderGroup<ResultRow>;
 };
 
-export const HeaderDroppable: FC<HeaderDroppableProps> = ({
-    headerGroup,
-    children,
-}) => {
+export const HeaderDroppable: FC<
+    React.PropsWithChildren<HeaderDroppableProps>
+> = ({ headerGroup, children }) => {
     return (
         <Droppable
             droppableId="droppable"

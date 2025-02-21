@@ -1,28 +1,32 @@
 import {
-    Button,
-    Dialog,
-    DialogBody,
-    DialogFooter,
-    DialogProps,
-} from '@blueprintjs/core';
-import {
-    assertUnreachable,
-    Dashboard,
     DashboardTileTypes,
+    assertUnreachable,
+    type Dashboard,
+    type DashboardLoomTileProperties,
+    type DashboardMarkdownTile,
+    type DashboardMarkdownTileProperties,
 } from '@lightdash/common';
-import produce from 'immer';
-import { useForm } from 'react-hook-form';
-import Form from '../../ReactHookForm/Form';
-import ChartTileForm from './ChartTileForm';
+import {
+    Button,
+    Group,
+    Modal,
+    Stack,
+    Title,
+    type ModalProps,
+} from '@mantine/core';
+import { useForm, type UseFormReturnType } from '@mantine/form';
+import { IconMarkdown, IconVideo } from '@tabler/icons-react';
+import { produce } from 'immer';
+import MantineIcon from '../../common/MantineIcon';
 import LoomTileForm from './LoomTileForm';
 import MarkdownTileForm from './MarkdownTileForm';
+import { getLoomId, markdownTileContentTransform } from './utils';
 
 type Tile = Dashboard['tiles'][number];
 type TileProperties = Tile['properties'];
 
-interface TileUpdateModalProps<T> extends DialogProps {
+interface TileUpdateModalProps<T> extends ModalProps {
     tile: T;
-    onClose?: () => void;
     onConfirm?: (tile: T) => void;
 }
 
@@ -32,66 +36,103 @@ const TileUpdateModal = <T extends Tile>({
     onConfirm,
     ...modalProps
 }: TileUpdateModalProps<T>) => {
+    const getValidators = () => {
+        const urlValidator = {
+            url: (value: string | undefined) =>
+                getLoomId(value) ? null : 'Loom url not valid',
+        };
+        const titleValidator = {
+            title: (value: string | undefined) => {
+                return !value || !value.length ? 'Required field' : null;
+            },
+        };
+
+        if (tile.type === DashboardTileTypes.LOOM)
+            return { ...urlValidator, ...titleValidator };
+    };
+
     const form = useForm<TileProperties>({
-        mode: 'onChange',
-        defaultValues: tile.properties,
+        initialValues: { ...tile.properties },
+        validate: getValidators(),
+        validateInputOnChange: ['title', 'url'],
+        transformValues(values) {
+            if (tile.type === DashboardTileTypes.MARKDOWN) {
+                return markdownTileContentTransform(
+                    values as DashboardMarkdownTile['properties'],
+                );
+            }
+
+            return values;
+        },
     });
 
-    const handleConfirm = async (properties: TileProperties) => {
+    const handleConfirm = form.onSubmit(({ ...properties }) => {
         onConfirm?.(
             produce(tile, (draft) => {
                 draft.properties = properties;
             }),
         );
-    };
-
-    const handleClose = () => {
-        form.reset();
-        onClose?.();
-    };
+    });
 
     return (
-        <Dialog
-            lazy
-            title="Edit tile content"
+        <Modal
+            size="xl"
+            title={
+                <Group spacing="xs">
+                    <MantineIcon
+                        size="lg"
+                        color="blue.8"
+                        icon={
+                            tile.type === DashboardTileTypes.MARKDOWN
+                                ? IconMarkdown
+                                : IconVideo
+                        }
+                    />
+                    <Title order={4}>Edit {tile.type} tile</Title>
+                </Group>
+            }
             {...modalProps}
-            onClose={handleClose}
-            backdropClassName="non-draggable"
+            onClose={() => onClose?.()}
         >
-            <Form
-                name="Edit tile content"
-                methods={form}
-                onSubmit={handleConfirm}
-            >
-                <DialogBody>
-                    {tile.type === DashboardTileTypes.SAVED_CHART ? (
-                        <ChartTileForm />
-                    ) : tile.type === DashboardTileTypes.MARKDOWN ? (
-                        <MarkdownTileForm />
+            <form onSubmit={handleConfirm}>
+                <Stack spacing="lg" pt="sm">
+                    {tile.type === DashboardTileTypes.SAVED_CHART ||
+                    tile.type ===
+                        DashboardTileTypes.SQL_CHART ? null : tile.type ===
+                      DashboardTileTypes.SEMANTIC_VIEWER_CHART ? null : tile.type ===
+                      DashboardTileTypes.MARKDOWN ? (
+                        <MarkdownTileForm
+                            form={
+                                form as UseFormReturnType<
+                                    DashboardMarkdownTileProperties['properties']
+                                >
+                            }
+                        />
                     ) : tile.type === DashboardTileTypes.LOOM ? (
-                        <LoomTileForm />
+                        <LoomTileForm
+                            form={
+                                form as UseFormReturnType<
+                                    DashboardLoomTileProperties['properties']
+                                >
+                            }
+                            withHideTitle
+                        />
                     ) : (
                         assertUnreachable(tile, 'Tile type not supported')
                     )}
-                </DialogBody>
 
-                <DialogFooter
-                    actions={
-                        <>
-                            <Button onClick={handleClose}>Cancel</Button>
+                    <Group position="right" mt="sm">
+                        <Button variant="outline" onClick={() => onClose?.()}>
+                            Cancel
+                        </Button>
 
-                            <Button
-                                intent="primary"
-                                type="submit"
-                                disabled={!form.formState.isValid}
-                            >
-                                Save
-                            </Button>
-                        </>
-                    }
-                />
-            </Form>
-        </Dialog>
+                        <Button type="submit" disabled={!form.isValid()}>
+                            Save
+                        </Button>
+                    </Group>
+                </Stack>
+            </form>
+        </Modal>
     );
 };
 

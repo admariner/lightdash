@@ -1,38 +1,69 @@
 import {
+    AnyType,
+    CompileProjectPayload,
+    CreateSchedulerAndTargets,
+    CreateSchedulerTarget,
+    DownloadCsvPayload,
     EmailNotificationPayload,
-    isSlackTarget,
+    GsheetsNotificationPayload,
+    JobPriority,
     NotificationPayloadBase,
+    ReplaceCustomFieldsPayload,
+    ReplaceCustomFieldsTask,
     ScheduledDeliveryPayload,
     ScheduledJobs,
     Scheduler,
     SchedulerAndTargets,
-    SchedulerEmailTarget,
+    SchedulerFormat,
     SchedulerJobStatus,
-    SchedulerSlackTarget,
+    SemanticLayerQueryPayload,
     SlackNotificationPayload,
+    SqlRunnerPayload,
+    SqlRunnerPivotQueryPayload,
+    UploadMetricGsheetPayload,
+    ValidateProjectPayload,
+    getSchedulerTargetUuid,
+    getSchedulerUuid,
+    hasSchedulerUuid,
+    indexCatalogJob,
+    isCreateSchedulerSlackTarget,
+    semanticLayerQueryJob,
+    sqlRunnerJob,
+    sqlRunnerPivotQueryJob,
+    type SchedulerCreateProjectWithCompilePayload,
+    type SchedulerIndexCatalogJobPayload,
 } from '@lightdash/common';
+import * as Sentry from '@sentry/node';
 import { getSchedule, stringToArray } from 'cron-converter';
-import { makeWorkerUtils, WorkerUtils } from 'graphile-worker';
+import { WorkerUtils, makeWorkerUtils } from 'graphile-worker';
 import moment from 'moment';
-import { analytics } from '../analytics/client';
+import { nanoid } from 'nanoid';
 import { LightdashAnalytics } from '../analytics/LightdashAnalytics';
 import { LightdashConfig } from '../config/parseConfig';
-import Logger from '../logger';
+import Logger from '../logging/logger';
 import { SchedulerModel } from '../models/SchedulerModel';
 
-type SchedulerClientDependencies = {
+type SchedulerClientArguments = {
     lightdashConfig: LightdashConfig;
+    analytics: LightdashAnalytics;
     schedulerModel: SchedulerModel;
 };
 
+const SCHEDULED_JOB_MAX_ATTEMPTS = 1;
+
 export const getDailyDatesFromCron = (
-    cron: string,
+    {
+        cron,
+        timezone,
+    }: {
+        cron: string;
+        timezone: string;
+    },
     when = new Date(),
 ): Date[] => {
     const arr = stringToArray(cron);
     const startOfMinute = moment(when).startOf('minute').toDate(); // round down to the nearest minute so we can even process 00:00 on daily jobs
-    const schedule = getSchedule(arr, startOfMinute, 'UTC');
-
+    const schedule = getSchedule(arr, startOfMinute, timezone);
     const tomorrow = moment(startOfMinute)
         .utc()
         .add(1, 'day')
@@ -50,27 +81,138 @@ export const getDailyDatesFromCron = (
 export class SchedulerClient {
     lightdashConfig: LightdashConfig;
 
+    analytics: LightdashAnalytics;
+
     graphileUtils: Promise<WorkerUtils>;
 
     schedulerModel: SchedulerModel;
 
     constructor({
         lightdashConfig,
+        analytics,
         schedulerModel,
-    }: SchedulerClientDependencies) {
+    }: SchedulerClientArguments) {
         this.lightdashConfig = lightdashConfig;
+        this.analytics = analytics;
         this.schedulerModel = schedulerModel;
         this.graphileUtils = makeWorkerUtils({
             connectionString: lightdashConfig.database.connectionUri,
-        }).then((utils) =>
-            utils
-                .migrate()
-                .then(() => utils)
-                .catch((e: any) => {
-                    Logger.warn('Error migrating graphile worker', e);
-                    return utils;
-                }),
+        })
+            .then((utils) => utils)
+            .catch((e: AnyType) => {
+                Logger.error('Error migrating graphile worker', e);
+                process.exit(1);
+            });
+    }
+
+    static async processJob(
+        task: string,
+        jobId: string,
+        runAt: Date,
+        payload: AnyType,
+        funct: () => Promise<void>,
+    ) {
+        const { traceHeader, baggageHeader, sentryMessageId } = payload;
+        const latency = Date.now() - runAt.getTime();
+        return new Promise<void>((resolve, reject) => {
+            Sentry.continueTrace(
+                { sentryTrace: traceHeader, baggage: baggageHeader },
+                async () => {
+                    await Sentry.startSpan(
+                        {
+                            name: 'queue_consumer_transaction',
+                        },
+                        async (parent) => {
+                            await Sentry.startSpan(
+                                {
+                                    name: 'queue_consumer',
+                                    op: 'queue.process',
+                                    attributes: {
+                                        'messaging.message.id': sentryMessageId,
+                                        'messaging.destination.name': task,
+                                        'messaging.message.body.size':
+                                            Buffer.byteLength(
+                                                JSON.stringify(payload),
+                                            ),
+                                        'messaging.message.receive.latency':
+                                            latency,
+                                        'messaging.message.retry.count': 0,
+                                        'messaging.message.job.id': jobId,
+                                    },
+                                },
+                                async (span) => {
+                                    const OK = 1;
+                                    const ERROR = 2;
+                                    try {
+                                        await funct();
+
+                                        parent.setStatus({ code: OK });
+
+                                        resolve();
+                                    } catch (e) {
+                                        parent.setStatus({
+                                            code: ERROR,
+                                            message: `Unable to process job ${e}`,
+                                        });
+                                        reject(e);
+                                        throw e;
+                                    }
+                                },
+                            );
+                        },
+                    );
+                },
+            ).catch((e) => {
+                reject(e);
+            });
+        });
+    }
+
+    private static async addJob(
+        graphileClient: WorkerUtils,
+        identifier: string,
+        payload: AnyType,
+        scheduledAt: Date,
+        priority: JobPriority,
+        maxAttempts: number = SCHEDULED_JOB_MAX_ATTEMPTS,
+    ) {
+        const messageId = nanoid();
+        const jobId = await Sentry.startSpan(
+            {
+                name: 'queue_producer',
+                op: 'queue.publish',
+                attributes: {
+                    'messaging.message.id': messageId,
+                    'messaging.destination.name': identifier,
+                    'messaging.message.body.size': Buffer.byteLength(
+                        JSON.stringify(payload),
+                    ),
+                },
+            },
+            async (span) => {
+                const traceHeader = Sentry.spanToTraceHeader(span);
+                const baggageHeader = Sentry.spanToBaggageHeader(span);
+                const payloadWithSentryHeaders = {
+                    ...payload,
+                    traceHeader,
+                    baggageHeader,
+                    sentryMessageId: messageId,
+                };
+                const { id } = await graphileClient.addJob(
+                    identifier,
+                    payloadWithSentryHeaders,
+                    {
+                        runAt: scheduledAt,
+                        maxAttempts,
+                        priority,
+                    },
+                );
+
+                // span.setAttribute('messaging.message.job.id', id);
+                return id;
+            },
         );
+        return jobId;
     }
 
     async getScheduledJobs(schedulerUuid: string): Promise<ScheduledJobs[]> {
@@ -88,6 +230,16 @@ export class SchedulerClient {
         }));
     }
 
+    async getQueueSize(): Promise<number> {
+        const graphileClient = await this.graphileUtils;
+        const results = await graphileClient.withPgClient((pgClient) =>
+            pgClient.query(
+                'select count(id) as count from graphile_worker.jobs where attempts <> max_attempts AND run_at < now()',
+            ),
+        );
+        return parseInt(results.rows[0].count, 10);
+    }
+
     async deleteScheduledJobs(schedulerUuid: string): Promise<void> {
         const graphileClient = await this.graphileUtils;
         const jobsToDelete = await this.getScheduledJobs(schedulerUuid);
@@ -99,7 +251,7 @@ export class SchedulerClient {
         await graphileClient.completeJobs(jobIdsToDelete);
 
         jobsToDelete.forEach(({ id }) => {
-            analytics.track({
+            this.analytics.track({
                 event: 'scheduler_job.deleted',
                 anonymousId: LightdashAnalytics.anonymousId,
                 properties: {
@@ -110,78 +262,169 @@ export class SchedulerClient {
         });
     }
 
-    private async addScheduledDeliveryJob(date: Date, scheduler: Scheduler) {
+    async addScheduledDeliveryJob(
+        date: Date,
+        scheduler: Scheduler | CreateSchedulerAndTargets,
+        schedulerUuid: string | undefined,
+    ) {
         const graphileClient = await this.graphileUtils;
 
-        const payload: ScheduledDeliveryPayload = {
-            schedulerUuid: scheduler.schedulerUuid,
-        };
-        const { id } = await graphileClient.addJob(
+        const payload: ScheduledDeliveryPayload = schedulerUuid
+            ? {
+                  schedulerUuid,
+              }
+            : scheduler;
+
+        let maxAttempts = SCHEDULED_JOB_MAX_ATTEMPTS;
+        if (
+            scheduler.format === SchedulerFormat.IMAGE &&
+            !!scheduler.dashboardUuid
+        ) {
+            maxAttempts = SCHEDULED_JOB_MAX_ATTEMPTS + 1;
+        }
+
+        const id = await SchedulerClient.addJob(
+            graphileClient,
             'handleScheduledDelivery',
             payload,
-            {
-                runAt: date,
-                maxAttempts: 1,
-            },
+            date,
+            JobPriority.LOW,
+            maxAttempts,
         );
-        analytics.track({
+        await this.schedulerModel.logSchedulerJob({
+            task: 'handleScheduledDelivery',
+            schedulerUuid,
+            jobGroup: id,
+            jobId: id,
+            scheduledTime: date,
+            status: SchedulerJobStatus.SCHEDULED,
+        });
+        this.analytics.track({
             event: 'scheduler_job.created',
             anonymousId: LightdashAnalytics.anonymousId,
             properties: {
                 jobId: id,
-                schedulerId: scheduler.schedulerUuid,
+                schedulerId: schedulerUuid,
             },
         });
 
         return { jobId: id, date };
     }
 
-    private async addNotificationJob(
+    private async addGsheetsUploadJob(
         date: Date,
         jobGroup: string,
         scheduler: Scheduler,
-        target: SchedulerSlackTarget | SchedulerEmailTarget,
-        page: NotificationPayloadBase['page'],
     ) {
         const graphileClient = await this.graphileUtils;
 
-        const payload: SlackNotificationPayload | EmailNotificationPayload =
-            isSlackTarget(target)
-                ? {
-                      schedulerUuid: scheduler.schedulerUuid,
-                      jobGroup,
-                      scheduledTime: date,
-                      page,
-                      schedulerSlackTargetUuid: target.schedulerSlackTargetUuid,
-                  }
-                : {
-                      schedulerUuid: scheduler.schedulerUuid,
-                      scheduledTime: date,
-                      jobGroup,
-                      page,
-                      schedulerEmailTargetUuid: target.schedulerEmailTargetUuid,
-                  };
-        const { id } = await graphileClient.addJob(
-            isSlackTarget(target)
-                ? 'sendSlackNotification'
-                : 'sendEmailNotification',
+        const payload: GsheetsNotificationPayload = {
+            schedulerUuid: scheduler.schedulerUuid,
+            jobGroup,
+            scheduledTime: date,
+        };
+        const id = await SchedulerClient.addJob(
+            graphileClient,
+            'uploadGsheets',
             payload,
-            {
-                runAt: date,
-                maxAttempts: 1,
-            },
+            date,
+            JobPriority.LOW,
         );
-        analytics.track({
+
+        this.analytics.track({
             event: 'scheduler_notification_job.created',
             anonymousId: LightdashAnalytics.anonymousId,
             properties: {
                 jobId: id,
                 schedulerId: scheduler.schedulerUuid,
-                schedulerTargetId: isSlackTarget(target)
-                    ? target.schedulerSlackTargetUuid
-                    : target.schedulerEmailTargetUuid,
-                type: isSlackTarget(target) ? 'slack' : 'email',
+                schedulerTargetId: undefined,
+                type: 'gsheets',
                 format: scheduler.format,
+                sendNow: scheduler.schedulerUuid === undefined,
+            },
+        });
+        return { jobId: id };
+    }
+
+    private async addNotificationJob(
+        date: Date,
+        jobGroup: string,
+        scheduler: SchedulerAndTargets | CreateSchedulerAndTargets,
+        target: CreateSchedulerTarget | undefined,
+        targetUuid: string | undefined,
+        page: NotificationPayloadBase['page'] | undefined,
+    ) {
+        if (!target) {
+            throw new Error('Missing target for slack or email notification');
+        }
+        if (!page) {
+            throw new Error(
+                'Missing page data for slack or email notification',
+            );
+        }
+        if (scheduler.format === SchedulerFormat.GSHEETS) {
+            throw new Error("Can't add Google sheets notification");
+        }
+
+        const graphileClient = await this.graphileUtils;
+
+        const schedulerUuid = getSchedulerUuid(scheduler);
+
+        const getIdentifierAndPayload = (): {
+            identifier: string;
+            type: 'slack' | 'email';
+            payload: SlackNotificationPayload | EmailNotificationPayload;
+        } => {
+            if (isCreateSchedulerSlackTarget(target)) {
+                return {
+                    identifier: 'sendSlackNotification',
+                    type: 'slack',
+                    payload: {
+                        schedulerUuid,
+                        jobGroup,
+                        scheduledTime: date,
+                        page,
+                        schedulerSlackTargetUuid: targetUuid,
+                        scheduler,
+                        channel: target.channel,
+                    },
+                };
+            }
+
+            return {
+                identifier: 'sendEmailNotification',
+                type: 'email',
+                payload: {
+                    schedulerUuid,
+                    scheduledTime: date,
+                    jobGroup,
+                    page,
+                    schedulerEmailTargetUuid: targetUuid,
+                    scheduler,
+                    recipient: target.recipient,
+                },
+            };
+        };
+
+        const { identifier, payload, type } = getIdentifierAndPayload();
+        const id = await SchedulerClient.addJob(
+            graphileClient,
+            identifier,
+            payload,
+            date,
+            JobPriority.LOW,
+        );
+
+        this.analytics.track({
+            event: 'scheduler_notification_job.created',
+            anonymousId: LightdashAnalytics.anonymousId,
+            properties: {
+                jobId: id,
+                schedulerId: schedulerUuid,
+                schedulerTargetId: targetUuid,
+                type,
+                format: scheduler.format,
+                sendNow: schedulerUuid === undefined,
             },
         });
         return { target, jobId: id };
@@ -189,11 +432,29 @@ export class SchedulerClient {
 
     async generateDailyJobsForScheduler(
         scheduler: SchedulerAndTargets,
+        defaultTimezone: string,
+        // startingDateTime specifies that time after which to generate jobs.
+        // If not provided, it will generate job after now, which is the desired
+        // behavior for new schedulers and updates.
+        startingDateTime?: Date,
     ): Promise<void> {
-        const dates = getDailyDatesFromCron(scheduler.cron);
+        if (scheduler.enabled === false) return; // Do not add jobs for disabled schedulers
+
+        const dates = getDailyDatesFromCron(
+            {
+                cron: scheduler.cron,
+                timezone: scheduler.timezone || defaultTimezone,
+            },
+            startingDateTime,
+        );
+
         try {
             const promises = dates.map((date: Date) =>
-                this.addScheduledDeliveryJob(date, scheduler),
+                this.addScheduledDeliveryJob(
+                    date,
+                    scheduler,
+                    scheduler.schedulerUuid,
+                ),
             );
 
             Logger.info(
@@ -210,7 +471,7 @@ export class SchedulerClient {
                     status: SchedulerJobStatus.SCHEDULED,
                 });
             });
-        } catch (err: any) {
+        } catch (err: AnyType) {
             Logger.error(
                 `Unable to schedule job for scheduler ${scheduler.schedulerUuid}`,
                 err,
@@ -221,31 +482,361 @@ export class SchedulerClient {
 
     async generateJobsForSchedulerTargets(
         scheduledTime: Date,
-        scheduler: SchedulerAndTargets,
-        page: NotificationPayloadBase['page'],
+        scheduler: SchedulerAndTargets | CreateSchedulerAndTargets,
+        page: NotificationPayloadBase['page'] | undefined,
         parentJobId: string,
     ) {
+        const schedulerUuid = getSchedulerUuid(scheduler);
+
         try {
+            if (scheduler.format === SchedulerFormat.GSHEETS) {
+                if (!hasSchedulerUuid(scheduler)) {
+                    throw Error(
+                        'Unable to run Google sheet delivery on unsaved scheduled delivery',
+                    );
+                }
+                Logger.info(
+                    `Creating gsheet notification jobs for scheduler ${schedulerUuid}`,
+                );
+                const job = await this.addGsheetsUploadJob(
+                    scheduledTime,
+                    parentJobId,
+                    scheduler,
+                );
+                return [{ ...job, target: undefined }];
+            }
             const promises = scheduler.targets.map((target) =>
                 this.addNotificationJob(
                     scheduledTime,
                     parentJobId,
                     scheduler,
                     target,
+                    getSchedulerTargetUuid(target),
                     page,
                 ),
             );
-
             Logger.info(
-                `Creating ${promises.length} notification jobs for scheduler ${scheduler.schedulerUuid}`,
+                `Creating ${promises.length} notification jobs for scheduler ${schedulerUuid}`,
             );
             return await Promise.all(promises);
-        } catch (err: any) {
+        } catch (err: AnyType) {
             Logger.error(
-                `Unable to schedule notification job for scheduler ${scheduler.schedulerUuid}`,
+                `Unable to schedule notification job for scheduler ${schedulerUuid}`,
                 err,
             );
             throw err;
         }
+    }
+
+    async downloadCsvJob(payload: DownloadCsvPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            'downloadCsv',
+            payload,
+            now,
+            JobPriority.HIGH,
+        );
+
+        await this.schedulerModel.logSchedulerJob({
+            task: 'downloadCsv',
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.userUuid,
+                projectUuid: payload.projectUuid,
+                exploreId: payload.exploreId,
+                metricQuery: payload.metricQuery,
+            },
+        });
+
+        return { jobId };
+    }
+
+    async uploadGsheetFromQueryJob(payload: UploadMetricGsheetPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            'uploadGsheetFromQuery',
+            payload,
+            now,
+            JobPriority.LOW,
+        );
+
+        await this.schedulerModel.logSchedulerJob({
+            task: 'uploadGsheetFromQuery',
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.userUuid,
+                projectUuid: payload.projectUuid,
+                exploreId: payload.exploreId,
+                metricQuery: payload.metricQuery,
+            },
+        });
+
+        return { jobId };
+    }
+
+    async generateValidation(payload: ValidateProjectPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            'validateProject',
+            payload,
+            now,
+            JobPriority.MEDIUM,
+        );
+
+        await this.schedulerModel.logSchedulerJob({
+            task: 'validateProject',
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.userUuid,
+                projectUuid: payload.projectUuid,
+                organizationUuid: payload.organizationUuid,
+                context: payload.context,
+            },
+        });
+
+        return jobId;
+    }
+
+    async semanticLayerStreamingResults(payload: SemanticLayerQueryPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            semanticLayerQueryJob,
+            payload,
+            now,
+            JobPriority.HIGH,
+        );
+        await this.schedulerModel.logSchedulerJob({
+            task: semanticLayerQueryJob,
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.userUuid,
+            },
+        });
+
+        return jobId;
+    }
+
+    async runSql(payload: SqlRunnerPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            sqlRunnerJob,
+            payload,
+            now,
+            JobPriority.HIGH,
+        );
+        await this.schedulerModel.logSchedulerJob({
+            task: sqlRunnerJob,
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.userUuid,
+            },
+        });
+
+        return jobId;
+    }
+
+    async runSqlPivotQuery(payload: SqlRunnerPivotQueryPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            sqlRunnerPivotQueryJob,
+            payload,
+            now,
+            JobPriority.HIGH,
+        );
+
+        await this.schedulerModel.logSchedulerJob({
+            task: sqlRunnerPivotQueryJob,
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.userUuid,
+            },
+        });
+
+        return jobId;
+    }
+
+    async compileProject(payload: CompileProjectPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            'compileProject',
+            payload,
+            now,
+            JobPriority.HIGH,
+            1,
+        );
+
+        await this.schedulerModel.logSchedulerJob({
+            task: 'compileProject',
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.createdByUserUuid,
+                organizationUuid: payload.organizationUuid,
+                projectUuid: payload.projectUuid,
+                requestMethod: payload.requestMethod,
+                isPreview: payload.isPreview,
+                jobUuid: payload.jobUuid,
+            },
+        });
+
+        return { jobId };
+    }
+
+    async createProjectWithCompile(
+        payload: SchedulerCreateProjectWithCompilePayload,
+    ) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            'createProjectWithCompile',
+            payload,
+            now,
+            1,
+        );
+
+        await this.schedulerModel.logSchedulerJob({
+            task: 'createProjectWithCompile',
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.createdByUserUuid,
+                organizationUuid: payload.organizationUuid,
+                requestMethod: payload.requestMethod,
+                isPreview: payload.isPreview,
+            },
+        });
+
+        return { jobId };
+    }
+
+    async testAndCompileProject(payload: CompileProjectPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            'testAndCompileProject',
+            payload,
+            now,
+            JobPriority.HIGH,
+            1,
+        );
+
+        await this.schedulerModel.logSchedulerJob({
+            task: 'testAndCompileProject',
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.createdByUserUuid,
+                organizationUuid: payload.organizationUuid,
+                projectUuid: payload.projectUuid,
+                requestMethod: payload.requestMethod,
+                isPreview: payload.isPreview,
+                jobUuid: payload.jobUuid,
+            },
+        });
+
+        return { jobId };
+    }
+
+    async replaceCustomFields(payload: ReplaceCustomFieldsPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            ReplaceCustomFieldsTask,
+            payload,
+            now,
+            JobPriority.LOW,
+            1,
+        );
+
+        await this.schedulerModel.logSchedulerJob({
+            task: ReplaceCustomFieldsTask,
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.createdByUserUuid,
+                organizationUuid: payload.organizationUuid,
+                projectUuid: payload.projectUuid,
+            },
+        });
+
+        return { jobId };
+    }
+
+    // Indexes catalog and calculates chart usages - for example, metric_1 is used by 2 charts, so its chart_usage will be 2
+    async indexCatalog(payload: SchedulerIndexCatalogJobPayload) {
+        const graphileClient = await this.graphileUtils;
+        const now = new Date();
+        const jobId = await SchedulerClient.addJob(
+            graphileClient,
+            indexCatalogJob,
+            payload,
+            now,
+            JobPriority.MEDIUM,
+        );
+        await this.schedulerModel.logSchedulerJob({
+            task: indexCatalogJob,
+            jobId,
+            scheduledTime: now,
+            status: SchedulerJobStatus.SCHEDULED,
+            details: {
+                createdByUserUuid: payload.userUuid,
+                projectUuid: payload.projectUuid,
+            },
+        });
+
+        return jobId;
+    }
+
+    async getJobStatistics(): Promise<
+        { error: boolean; locked: boolean; count: number }[]
+    > {
+        const graphileClient = await this.graphileUtils;
+        const query = `
+            select 
+              last_error is not null as error, 
+              locked_by is not null as locked, 
+              count(*) as count
+            from graphile_worker.jobs
+            group by 1, 2
+        `;
+        const stats = await graphileClient.withPgClient(async (pgClient) => {
+            const { rows } = await pgClient.query(query);
+            return rows;
+        });
+        return stats;
     }
 }

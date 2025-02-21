@@ -1,16 +1,26 @@
 import {
+    Alert,
+    Anchor,
     Button,
-    Dialog,
-    DialogBody,
-    DialogFooter,
-    DialogProps,
-} from '@blueprintjs/core';
-import { FC } from 'react';
-import { Link, useParams } from 'react-router-dom';
+    Group,
+    List,
+    Modal,
+    Stack,
+    Text,
+    Title,
+    type ModalProps,
+} from '@mantine/core';
+import { IconAlertCircle } from '@tabler/icons-react';
+import { type FC } from 'react';
+import { Link, useParams } from 'react-router';
 import { useDashboardsContainingChart } from '../../../hooks/dashboard/useDashboards';
-import { useDeleteMutation, useSavedQuery } from '../../../hooks/useSavedQuery';
+import {
+    useSavedQuery,
+    useSavedQueryDeleteMutation,
+} from '../../../hooks/useSavedQuery';
+import MantineIcon from '../MantineIcon';
 
-interface ChartDeleteModalProps extends DialogProps {
+interface ChartDeleteModalProps extends ModalProps {
     uuid: string;
     onConfirm?: () => void;
 }
@@ -21,14 +31,16 @@ const ChartDeleteModal: FC<ChartDeleteModalProps> = ({
     ...modalProps
 }) => {
     const { projectUuid } = useParams<{ projectUuid: string }>();
-    const { data: chart, isLoading } = useSavedQuery({ id: uuid });
-    const { data: relatedDashboards, isLoading: isLoadingRelatedDashboards } =
-        useDashboardsContainingChart(projectUuid, uuid);
+    const { data: chart, isInitialLoading } = useSavedQuery({ id: uuid });
+    const {
+        data: relatedDashboards,
+        isInitialLoading: isLoadingRelatedDashboards,
+    } = useDashboardsContainingChart(projectUuid, uuid);
     const { mutateAsync: deleteChart, isLoading: isDeleting } =
-        useDeleteMutation();
+        useSavedQueryDeleteMutation();
 
     if (
-        isLoading ||
+        isInitialLoading ||
         isLoadingRelatedDashboards ||
         !chart ||
         !relatedDashboards
@@ -42,53 +54,64 @@ const ChartDeleteModal: FC<ChartDeleteModalProps> = ({
     };
 
     return (
-        <Dialog lazy title="Delete Chart" icon="trash" {...modalProps}>
-            <DialogBody>
-                <p>
+        <Modal title={<Title order={4}>Delete Chart</Title>} {...modalProps}>
+            <Stack spacing="lg" pt="sm">
+                <Text>
                     Are you sure you want to delete the chart{' '}
-                    <b>"{chart.name}"</b>?
-                </p>
+                    <Text span fw={600}>
+                        "{chart.name}"
+                    </Text>
+                    ?
+                </Text>
 
                 {relatedDashboards.length > 0 && (
                     <>
-                        <b>
-                            This action will remove a chart tile from{' '}
-                            {relatedDashboards.length} dashboard
-                            {relatedDashboards.length > 1 ? 's' : ''}:
-                        </b>
-
-                        <ul>
-                            {relatedDashboards.map((dashboard) => (
-                                <li key={dashboard.uuid}>
-                                    <Link
-                                        target="_blank"
-                                        to={`/projects/${projectUuid}/dashboards/${dashboard.uuid}`}
-                                    >
-                                        {dashboard.name}
-                                    </Link>
-                                </li>
-                            ))}
-                        </ul>
+                        <Alert
+                            icon={<MantineIcon icon={IconAlertCircle} />}
+                            title={
+                                <Text fw={600}>
+                                    This action will remove a chart tile from{' '}
+                                    {relatedDashboards.length} dashboard
+                                    {relatedDashboards.length > 1 ? 's' : ''}:
+                                </Text>
+                            }
+                        >
+                            <List fz="sm">
+                                {relatedDashboards.map((dashboard) => (
+                                    <List.Item key={dashboard.uuid}>
+                                        <Anchor
+                                            component={Link}
+                                            target="_blank"
+                                            to={`/projects/${projectUuid}/dashboards/${dashboard.uuid}`}
+                                        >
+                                            {dashboard.name}
+                                        </Anchor>
+                                    </List.Item>
+                                ))}
+                            </List>
+                        </Alert>
                     </>
                 )}
-            </DialogBody>
 
-            <DialogFooter
-                actions={
-                    <>
-                        <Button onClick={modalProps.onClose}>Cancel</Button>
+                <Group position="right" mt="sm">
+                    <Button
+                        color="dark"
+                        variant="outline"
+                        onClick={modalProps.onClose}
+                    >
+                        Cancel
+                    </Button>
 
-                        <Button
-                            loading={isDeleting}
-                            intent="danger"
-                            onClick={handleConfirm}
-                        >
-                            Delete
-                        </Button>
-                    </>
-                }
-            />
-        </Dialog>
+                    <Button
+                        loading={isDeleting}
+                        color="red"
+                        onClick={handleConfirm}
+                    >
+                        Delete
+                    </Button>
+                </Group>
+            </Stack>
+        </Modal>
     );
 };
 

@@ -1,12 +1,16 @@
 import {
-    AdditionalMetric,
-    Field,
     getItemColor,
     getItemIcon,
+    isCustomBinDimension,
+    isCustomSqlDimension,
     isDimension,
     isField,
     isMetric,
-    TableCalculation,
+    isTableCalculation,
+    type AdditionalMetric,
+    type CustomDimension,
+    type Field,
+    type TableCalculation,
 } from '@lightdash/common';
 import {
     Icon123,
@@ -17,62 +21,63 @@ import {
     IconTag,
     IconToggleLeft,
 } from '@tabler/icons-react';
-import { CSSProperties, FC } from 'react';
-import { getItemIconName } from '../../Explorer/ExploreTree/TableTree/Tree/TreeSingleNode';
-import { SearchItem } from '../../NavBar/GlobalSearch/hooks';
+import { forwardRef } from 'react';
+import MantineIcon, { type MantineIconProps } from '../MantineIcon';
+import { getItemIconName } from './utils/fieldIconUtils';
 
-const getFieldIcon = (field: Field | TableCalculation | AdditionalMetric) => {
-    if (isField(field) && (isDimension(field) || isMetric(field))) {
-        return getItemIconName(field.type);
+const getFieldIcon = (
+    field: Field | TableCalculation | AdditionalMetric | CustomDimension,
+) => {
+    if (isCustomBinDimension(field)) {
+        return 'citation';
     }
+    if (isCustomSqlDimension(field)) {
+        return getItemIconName(field.dimensionType);
+    }
+    if (
+        (isField(field) && (isDimension(field) || isMetric(field))) ||
+        isTableCalculation(field)
+    ) {
+        if (field.type) return getItemIconName(field.type);
+    }
+
     return getItemIcon(field);
 };
 
-const FieldIcon: FC<{
-    item: Field | TableCalculation | AdditionalMetric;
-    color?: string | undefined;
-    size?: number | undefined;
-    style?: CSSProperties | undefined;
-}> = ({ item, color, size, style }) => {
-    const iconColor = color ? color : getItemColor(item);
-    const iconSize = size ? size : 20;
-
-    switch (getFieldIcon(item)) {
-        case 'citation':
-            return <IconAbc color={iconColor} size={iconSize} style={style} />;
-        case 'numerical':
-            return <Icon123 color={iconColor} size={iconSize} style={style} />;
-        case 'calendar':
-            return (
-                <IconCalendar color={iconColor} size={iconSize} style={style} />
-            );
-        case 'time':
-            return (
-                <IconClockHour4
-                    color={iconColor}
-                    size={iconSize}
-                    style={style}
-                />
-            );
-        case 'segmented-control':
-            return (
-                <IconToggleLeft
-                    color={iconColor}
-                    size={iconSize}
-                    style={style}
-                />
-            );
-        case 'function':
-            return (
-                <IconMathFunction
-                    color={iconColor}
-                    size={iconSize}
-                    style={style}
-                />
-            );
-        case 'tag':
-            return <IconTag color={iconColor} size={iconSize} style={style} />;
-    }
+type Props = Omit<MantineIconProps, 'icon'> & {
+    item: Field | TableCalculation | AdditionalMetric | CustomDimension;
+    selected?: boolean;
 };
+
+const FieldIcon = forwardRef<SVGSVGElement, Props>(
+    ({ item, size = 'lg', selected, ...iconProps }, ref) => {
+        const iconColor = selected
+            ? 'white'
+            : iconProps.color ?? getItemColor(item);
+
+        const props = {
+            ...iconProps,
+            ref,
+            size,
+            color: iconColor,
+        };
+        switch (getFieldIcon(item)) {
+            case 'citation':
+                return <MantineIcon icon={IconAbc} {...props} />;
+            case 'numerical':
+                return <MantineIcon icon={Icon123} {...props} />;
+            case 'calendar':
+                return <MantineIcon icon={IconCalendar} {...props} />;
+            case 'time':
+                return <MantineIcon icon={IconClockHour4} {...props} />;
+            case 'segmented-control':
+                return <MantineIcon icon={IconToggleLeft} {...props} />;
+            case 'function':
+                return <MantineIcon icon={IconMathFunction} {...props} />;
+            case 'tag':
+                return <MantineIcon icon={IconTag} {...props} />;
+        }
+    },
+);
 
 export default FieldIcon;

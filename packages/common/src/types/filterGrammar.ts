@@ -1,12 +1,14 @@
 import * as peg from 'pegjs';
 import { v4 as uuidv4 } from 'uuid';
+import { type AnyType } from './any';
 import { UnexpectedServerError } from './errors';
-import { FilterOperator, FilterRule } from './filter';
+import { FilterOperator, type MetricFilterRule } from './filter';
 
 export type ParsedFilter = {
     type: string;
-    values: any[];
+    values: AnyType[];
     is?: boolean;
+    date_interval?: string;
 };
 
 const filterGrammar = `ROOT
@@ -15,12 +17,12 @@ EMPTY_STRING = '' {
     return {
       type: '${FilterOperator.EQUALS}',
       values: [],
-      is: true, 
+      is: true,
     }
   }
 
 EXPRESSION
-= NUMERICAL / LIST / TERM  
+= NUMERICAL / DATE_RESTRICTION / LIST / TERM
 
 
 NUMERICAL = SPACE_SYMBOL* operator:OPERATOR SPACE_SYMBOL* value:NUMBER {
@@ -32,7 +34,18 @@ NUMERICAL = SPACE_SYMBOL* operator:OPERATOR SPACE_SYMBOL* value:NUMBER {
 
 OPERATOR = '>=' / '<=' / '>' / '<'
 
-NUMBER 
+DATE_RESTRICTION = SPACE_SYMBOL* operator:DATE_OPERATOR SPACE_SYMBOL* value:NUMBER SPACE_SYMBOL* interval:DATE_INTERVAL {
+    return {
+        type: operator,
+        values: [value],
+        date_interval: interval
+    }
+   }
+
+DATE_OPERATOR = 'inThePast' / 'inTheNext'
+DATE_INTERVAL = 'milliseconds' / 'seconds' / 'minutes' / 'hours' / 'days' / 'weeks' / 'months' / 'years'
+
+NUMBER
   = FLOAT ([Ee] [+-]? INTEGER)?
     { return Number(text()) }
 
@@ -70,45 +83,39 @@ KEYWORDS = ("EMPTY" / "empty") {
     }
 }
 MATCH
-= quotation_mark sequence:(char / PCT_SYMBOL / COMMA / UNDERSCORE / CARET)+ quotation_mark {
+= quotation_mark sequence:(char  / COMMA / UNDERSCORE / CARET)+ quotation_mark {
        return {
            type:'${FilterOperator.EQUALS}',
            values: [sequence.join('')]
        }
    }
-   / sequence:raw_string {
+   / sequence:(char  / COMMA / UNDERSCORE / CARET)+ {
     return {
         type:'${FilterOperator.EQUALS}',
-        values: [sequence]
+        values: [sequence.join('')]
     }
 }
 PCT
-=  CONTAINS / STARTS_WITH / ENDS_WITH / OTHER
+=  CONTAINS / STARTS_WITH / ENDS_WITH
 CONTAINS
-= PCT_SYMBOL value:string PCT_SYMBOL !(string / PCT_SYMBOL / UNDERSCORE)  {
+= PCT_SYMBOL value:(char / UNDERSCORE)+ PCT_SYMBOL !(string / PCT_SYMBOL / UNDERSCORE)  {
   return {
       type: '${FilterOperator.INCLUDE}',
-      values: [value]
+      values: [value.join('')]
     }
 }
 STARTS_WITH
-= value:string PCT_SYMBOL !(string / PCT_SYMBOL / UNDERSCORE) {
+= value:(char / UNDERSCORE)+ PCT_SYMBOL !(string / PCT_SYMBOL / UNDERSCORE) {
       return {
       type: '${FilterOperator.STARTS_WITH}',
-      values: [value]
+      values: [value.join('')]
   }
 }
 ENDS_WITH
-=  PCT_SYMBOL value:string !(PCT_SYMBOL / UNDERSCORE) {
+=  PCT_SYMBOL value:(char / UNDERSCORE)+ !(PCT_SYMBOL ) {
 return {
-     type: 'endsWith',
-     values: [value]
- }
-}
-OTHER = value: $(string* (PCT_SYMBOL / UNDERSCORE) string*)+ {
- return {
-     type: 'other',
-     values: [value]
+     type: '${FilterOperator.ENDS_WITH}',
+     values: [value.join('')]
  }
 }
 NOT = '!'
@@ -185,6 +192,8 @@ export const parseOperator = (
             return isTrue ? FilterOperator.INCLUDE : FilterOperator.NOT_INCLUDE;
         case FilterOperator.STARTS_WITH:
             return FilterOperator.STARTS_WITH;
+        case FilterOperator.ENDS_WITH:
+            return FilterOperator.ENDS_WITH;
         case '>':
             return FilterOperator.GREATER_THAN;
         case '>=':
@@ -193,7 +202,13 @@ export const parseOperator = (
             return FilterOperator.LESS_THAN;
         case '<=':
             return FilterOperator.LESS_THAN_OR_EQUAL;
-
+        case FilterOperator.IN_THE_PAST:
+            return FilterOperator.IN_THE_PAST;
+        case FilterOperator.IN_THE_NEXT:
+            return FilterOperator.IN_THE_NEXT;
+        case 'null':
+        case 'NULL':
+            return isTrue ? FilterOperator.NULL : FilterOperator.NOT_NULL;
         default:
             throw new UnexpectedServerError(
                 `Invalid filter operator type ${operator}`,
@@ -202,18 +217,29 @@ export const parseOperator = (
 };
 
 export const parseFilters = (
-    rawFilters: Record<string, any>[] | undefined,
-): FilterRule[] => {
+    rawFilters: Record<string, AnyType>[] | undefined,
+): MetricFilterRule[] => {
     if (!rawFilters || rawFilters.length === 0) {
         return [];
     }
     const parser = peg.generate(filterGrammar);
 
-    return rawFilters.reduce<FilterRule[]>((acc, filter) => {
+    return rawFilters.reduce<MetricFilterRule[]>((acc, filter) => {
         if (Object.entries(filter).length !== 1) return acc;
 
         const [key, value] = Object.entries(filter)[0];
 
+        if (value === null) {
+            return [
+                ...acc,
+                {
+                    id: uuidv4(),
+                    target: { fieldRef: key },
+                    operator: FilterOperator.NULL,
+                    values: [1],
+                },
+            ];
+        }
         if (typeof value === 'string') {
             const parsedFilter: ParsedFilter = parser.parse(value);
 
@@ -221,12 +247,30 @@ export const parseFilters = (
                 ...acc,
                 {
                     id: uuidv4(),
-                    target: { fieldId: key },
+                    target: { fieldRef: key },
                     operator: parseOperator(
                         parsedFilter.type,
                         !!parsedFilter.is,
                     ),
-                    values: parsedFilter.values,
+                    values: parsedFilter.values || [1],
+                    ...(parsedFilter.date_interval
+                        ? {
+                              settings: {
+                                  unitOfTime: parsedFilter.date_interval,
+                              },
+                          }
+                        : null),
+                },
+            ];
+        }
+        if (typeof value === 'object') {
+            return [
+                ...acc,
+                {
+                    id: uuidv4(),
+                    target: { fieldRef: key },
+                    operator: FilterOperator.EQUALS,
+                    values: value,
                 },
             ];
         }
@@ -234,7 +278,7 @@ export const parseFilters = (
             ...acc,
             {
                 id: uuidv4(),
-                target: { fieldId: key },
+                target: { fieldRef: key },
                 operator: FilterOperator.EQUALS,
                 values: [value],
             },

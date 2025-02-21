@@ -1,118 +1,138 @@
-import { TagInput } from '@blueprintjs/core';
-import { Popover2Props } from '@blueprintjs/popover2';
 import {
-    assertUnreachable,
-    ConditionalRule,
-    FilterableItem,
     FilterOperator,
     FilterType,
+    assertUnreachable,
     isFilterRule,
+    isTableCalculation,
+    type ConditionalRule,
 } from '@lightdash/common';
-import { isString } from 'lodash-es';
-import React from 'react';
-import { useFiltersContext } from '../FiltersProvider';
-import MultiAutoComplete from './AutoComplete/MultiAutoComplete';
-import { StyledNumericInput } from './NumericInput.styles';
-
-export type FilterInputsProps<T extends ConditionalRule> = {
-    filterType: FilterType;
-    field: FilterableItem;
-    rule: T;
-    onChange: (value: T) => void;
-    popoverProps?: Popover2Props;
-    disabled?: boolean;
-};
+import isString from 'lodash/isString';
+import { type FilterInputsProps } from '.';
+import { TagInput } from '../../TagInput/TagInput';
+import useFiltersContext from '../useFiltersContext';
+import { getPlaceholderByFilterTypeAndOperator } from '../utils/getPlaceholderByFilterTypeAndOperator';
+import FilterMultiStringInput from './FilterMultiStringInput';
+import FilterNumberInput from './FilterNumberInput';
+import FilterStringAutoComplete from './FilterStringAutoComplete';
 
 const DefaultFilterInputs = <T extends ConditionalRule>({
     field,
     filterType,
     rule,
-    popoverProps,
     disabled,
     onChange,
-}: React.PropsWithChildren<FilterInputsProps<T>>) => {
+    popoverProps,
+}: FilterInputsProps<T>) => {
     const { getField } = useFiltersContext();
     const suggestions = isFilterRule(rule)
         ? getField(rule)?.suggestions
         : undefined;
+
+    const placeholder = getPlaceholderByFilterTypeAndOperator({
+        type: filterType,
+        operator: rule.operator,
+        disabled: isFilterRule(rule)
+            ? rule.disabled && !rule.values
+            : undefined,
+    });
 
     switch (rule.operator) {
         case FilterOperator.NULL:
         case FilterOperator.NOT_NULL:
             return <span style={{ width: '100%' }} />;
         case FilterOperator.STARTS_WITH:
+        case FilterOperator.ENDS_WITH:
         case FilterOperator.INCLUDE:
         case FilterOperator.NOT_INCLUDE:
         case FilterOperator.EQUALS:
         case FilterOperator.NOT_EQUALS: {
-            if (filterType === FilterType.STRING) {
-                return (
-                    <MultiAutoComplete
-                        disabled={disabled}
-                        field={field}
-                        values={(rule.values || []).filter(isString)}
-                        suggestions={suggestions || []}
-                        popoverProps={popoverProps}
-                        onChange={(values) =>
-                            onChange({
-                                ...rule,
-                                values,
-                            })
-                        }
-                    />
-                );
+            switch (filterType) {
+                case FilterType.STRING:
+                    return isTableCalculation(field) ? (
+                        <FilterMultiStringInput
+                            disabled={disabled}
+                            placeholder={placeholder}
+                            autoFocus={true}
+                            withinPortal={popoverProps?.withinPortal}
+                            onDropdownOpen={popoverProps?.onOpen}
+                            onDropdownClose={popoverProps?.onClose}
+                            values={(rule.values || []).filter(isString)}
+                            onChange={(values) =>
+                                onChange({
+                                    ...rule,
+                                    values,
+                                })
+                            }
+                        />
+                    ) : (
+                        <FilterStringAutoComplete
+                            filterId={rule.id}
+                            disabled={disabled}
+                            field={field}
+                            autoFocus={true}
+                            placeholder={placeholder}
+                            suggestions={suggestions || []}
+                            withinPortal={popoverProps?.withinPortal}
+                            onDropdownOpen={popoverProps?.onOpen}
+                            onDropdownClose={popoverProps?.onClose}
+                            values={(rule.values || []).filter(isString)}
+                            onChange={(values) =>
+                                onChange({
+                                    ...rule,
+                                    values,
+                                })
+                            }
+                        />
+                    );
+
+                case FilterType.NUMBER:
+                case FilterType.BOOLEAN:
+                case FilterType.DATE:
+                    return (
+                        <TagInput
+                            w="100%"
+                            clearable
+                            autoFocus={true}
+                            size="xs"
+                            disabled={disabled}
+                            placeholder={placeholder}
+                            allowDuplicates={false}
+                            validationRegex={
+                                filterType === FilterType.NUMBER
+                                    ? /^-?\d+(\.\d+)?$/
+                                    : undefined
+                            }
+                            value={rule.values?.map(String)}
+                            onChange={(values) => onChange({ ...rule, values })}
+                        />
+                    );
+                default:
+                    return assertUnreachable(
+                        filterType,
+                        `No form implemented for DefaultFilterInputs filter type ${filterType}`,
+                    );
             }
-            return (
-                <TagInput
-                    className={disabled ? 'disabled-filter' : ''}
-                    fill
-                    disabled={disabled}
-                    addOnBlur
-                    inputProps={{
-                        type:
-                            filterType === FilterType.NUMBER
-                                ? 'number'
-                                : 'text',
-                    }}
-                    tagProps={{ minimal: true }}
-                    values={rule.values || []}
-                    onChange={(values) =>
-                        onChange({
-                            ...rule,
-                            values,
-                        })
-                    }
-                />
-            );
         }
         case FilterOperator.GREATER_THAN:
         case FilterOperator.GREATER_THAN_OR_EQUAL:
         case FilterOperator.LESS_THAN:
         case FilterOperator.LESS_THAN_OR_EQUAL:
         case FilterOperator.IN_THE_PAST:
+        case FilterOperator.NOT_IN_THE_PAST:
         case FilterOperator.IN_THE_NEXT:
         case FilterOperator.IN_THE_CURRENT:
+        case FilterOperator.NOT_IN_THE_CURRENT:
         case FilterOperator.IN_BETWEEN:
-            const value = rule.values?.[0];
-            let parsedValue: number | undefined;
-
-            if (typeof value === 'string') parsedValue = parseInt(value, 10);
-            else if (typeof value === 'number') parsedValue = value;
-            else parsedValue = undefined;
-
-            if (parsedValue && isNaN(parsedValue)) parsedValue = undefined;
-
             return (
-                <StyledNumericInput
-                    className={disabled ? 'disabled-filter' : ''}
+                <FilterNumberInput
                     disabled={disabled}
-                    fill
-                    type="number"
-                    defaultValue={parsedValue}
-                    onValueChange={(numericValue, stringValue) => {
+                    autoFocus={true}
+                    placeholder={placeholder}
+                    value={rule.values?.[0]}
+                    onChange={(newValue) => {
                         onChange({
                             ...rule,
-                            values: stringValue === '' ? [] : [numericValue],
+                            values: newValue !== null ? [newValue] : [],
                         });
                     }}
                 />

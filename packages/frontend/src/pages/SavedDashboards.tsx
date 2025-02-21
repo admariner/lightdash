@@ -1,73 +1,43 @@
-import { Button, NonIdealState, Spinner } from '@blueprintjs/core';
-import { Breadcrumbs2, Tooltip2 } from '@blueprintjs/popover2';
-import { subject } from '@casl/ability';
-import { LightdashMode } from '@lightdash/common';
-import { Stack } from '@mantine/core';
-import { IconLayoutDashboard } from '@tabler/icons-react';
+import { ContentType, LightdashMode } from '@lightdash/common';
+import { Button, Group, Stack } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Helmet } from 'react-helmet';
-import { Redirect, useHistory, useParams } from 'react-router-dom';
-import DashboardCreateModal from '../components/common/modal/DashboardCreateModal';
+import { useNavigate, useParams } from 'react-router';
+import LoadingState from '../components/common/LoadingState';
 import Page from '../components/common/Page/Page';
-import {
-    PageBreadcrumbsWrapper,
-    PageHeader,
-} from '../components/common/Page/Page.styles';
-import ResourceView from '../components/common/ResourceView';
-import {
-    ResourceViewItemType,
-    wrapResourceView,
-} from '../components/common/ResourceView/resourceTypeUtils';
-import { SortDirection } from '../components/common/ResourceView/ResourceViewList';
-import { useCreateMutation } from '../hooks/dashboard/useDashboard';
+import PageBreadcrumbs from '../components/common/PageBreadcrumbs';
+import InfiniteResourceTable from '../components/common/ResourceView/InfiniteResourceTable';
+import DashboardCreateModal from '../components/common/modal/DashboardCreateModal';
 import { useDashboards } from '../hooks/dashboard/useDashboards';
-import { useSpaces } from '../hooks/useSpaces';
-import { useApp } from '../providers/AppProvider';
-
-export const DEFAULT_DASHBOARD_NAME = 'Untitled dashboard';
+import { useSpaceSummaries } from '../hooks/useSpaces';
+import useCreateInAnySpaceAccess from '../hooks/user/useCreateInAnySpaceAccess';
+import useApp from '../providers/App/useApp';
 
 const SavedDashboards = () => {
-    const history = useHistory();
+    const navigate = useNavigate();
     const { projectUuid } = useParams<{ projectUuid: string }>();
-    const { isLoading, data: dashboards = [] } = useDashboards(projectUuid);
+    const { isInitialLoading, data: dashboards = [] } =
+        useDashboards(projectUuid);
     const [isCreateDashboardOpen, setIsCreateDashboardOpen] =
         useState<boolean>(false);
 
-    const {
-        isLoading: isCreatingDashboard,
-        isSuccess: hasCreatedDashboard,
-        mutate: createDashboard,
-        data: newDashboard,
-    } = useCreateMutation(projectUuid);
-
-    const { user, health } = useApp();
+    const { health } = useApp();
     const isDemo = health.data?.mode === LightdashMode.DEMO;
-    const { data: spaces, isLoading: isLoadingSpaces } = useSpaces(projectUuid);
+    const { data: spaces, isInitialLoading: isLoadingSpaces } =
+        useSpaceSummaries(projectUuid);
     const hasNoSpaces = spaces && spaces.length === 0;
 
-    const userCanManageDashboards = user.data?.ability?.can(
-        'manage',
-        subject('Dashboard', {
-            organizationUuid: user.data?.organizationUuid,
-            projectUuid,
-        }),
+    const userCanCreateDashboards = useCreateInAnySpaceAccess(
+        projectUuid,
+        'Dashboard',
     );
 
-    if (isLoading || isLoadingSpaces) {
-        return (
-            <div style={{ marginTop: '20px' }}>
-                <NonIdealState title="Loading dashboards" icon={<Spinner />} />
-            </div>
-        );
+    if (!projectUuid) {
+        return null;
     }
 
-    if (hasCreatedDashboard && newDashboard) {
-        return (
-            <Redirect
-                push
-                to={`/projects/${projectUuid}/dashboards/${newDashboard.uuid}`}
-            />
-        );
+    if (isInitialLoading || isLoadingSpaces) {
+        return <LoadingState title="Loading dashboards" />;
     }
 
     const handleCreateDashboard = () => {
@@ -75,103 +45,56 @@ const SavedDashboards = () => {
     };
 
     return (
-        <Page>
-            <Helmet>
-                <title>Dashboards - Lightdash</title>
-            </Helmet>
-
-            <Stack spacing="xl" w={900}>
-                <PageHeader>
-                    <PageBreadcrumbsWrapper>
-                        <Breadcrumbs2
-                            items={[
-                                {
-                                    href: '/home',
-                                    text: 'Home',
-                                    className: 'home-breadcrumb',
-                                    onClick: (e) => {
-                                        history.push('/home');
-                                    },
-                                },
-                                {
-                                    text: 'All dashboards',
-                                },
-                            ]}
-                        />
-                    </PageBreadcrumbsWrapper>
+        <Page
+            title="Dashboards"
+            withCenteredRoot
+            withCenteredContent
+            withXLargePaddedContent
+            withLargeContent
+        >
+            <Stack spacing="xxl" w="100%">
+                <Group position="apart">
+                    <PageBreadcrumbs
+                        items={[
+                            { title: 'Home', to: '/home' },
+                            { title: 'All dashboards', active: true },
+                        ]}
+                    />
 
                     {dashboards.length > 0 &&
-                        userCanManageDashboards &&
+                        userCanCreateDashboards &&
                         !isDemo && (
-                            <Tooltip2
-                                content={
-                                    hasNoSpaces
-                                        ? 'First you must create a space for this dashboard'
-                                        : undefined
-                                }
-                                interactionKind="hover"
+                            <Button
+                                leftIcon={<IconPlus size={18} />}
+                                onClick={handleCreateDashboard}
+                                disabled={hasNoSpaces}
                             >
-                                <Button
-                                    icon="plus"
-                                    loading={isCreatingDashboard}
-                                    onClick={handleCreateDashboard}
-                                    disabled={hasNoSpaces}
-                                    intent="primary"
-                                >
-                                    Create dashboard
-                                </Button>
-                            </Tooltip2>
+                                Create dashboard
+                            </Button>
                         )}
-                </PageHeader>
+                </Group>
 
-                <DashboardCreateModal
-                    projectUuid={projectUuid}
-                    isOpen={isCreateDashboardOpen}
-                    onClose={() => setIsCreateDashboardOpen(false)}
-                    onConfirm={(dashboard) => {
-                        history.push(
-                            `/projects/${projectUuid}/dashboards/${dashboard.uuid}/edit`,
-                        );
-
-                        setIsCreateDashboardOpen(false);
-                    }}
-                />
-
-                <ResourceView
-                    items={wrapResourceView(
-                        dashboards,
-                        ResourceViewItemType.DASHBOARD,
-                    )}
-                    listProps={{
-                        defaultSort: { updatedAt: SortDirection.DESC },
-                    }}
-                    emptyStateProps={{
-                        icon: <IconLayoutDashboard size={30} />,
-                        title: 'No dashboards added yet',
-                        action:
-                            userCanManageDashboards && !isDemo ? (
-                                <Tooltip2
-                                    content={
-                                        hasNoSpaces
-                                            ? 'First you must create a space for this dashboard'
-                                            : undefined
-                                    }
-                                    interactionKind="hover"
-                                >
-                                    <Button
-                                        icon="plus"
-                                        loading={isCreatingDashboard}
-                                        onClick={handleCreateDashboard}
-                                        disabled={hasNoSpaces}
-                                        intent="primary"
-                                    >
-                                        Create dashboard
-                                    </Button>
-                                </Tooltip2>
-                            ) : undefined,
+                <InfiniteResourceTable
+                    filters={{
+                        projectUuid,
+                        contentTypes: [ContentType.DASHBOARD],
                     }}
                 />
             </Stack>
+
+            <DashboardCreateModal
+                projectUuid={projectUuid}
+                defaultSpaceUuid={spaces?.[0]?.uuid}
+                opened={isCreateDashboardOpen}
+                onClose={() => setIsCreateDashboardOpen(false)}
+                onConfirm={(dashboard) => {
+                    void navigate(
+                        `/projects/${projectUuid}/dashboards/${dashboard.uuid}/edit`,
+                    );
+
+                    setIsCreateDashboardOpen(false);
+                }}
+            />
         </Page>
     );
 };

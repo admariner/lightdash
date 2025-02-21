@@ -1,9 +1,9 @@
 import {
-    ApiError,
-    OnboardingStatus,
-    ProjectSavedChartStatus,
+    type ApiError,
+    type OnboardingStatus,
+    type ProjectSavedChartStatus,
 } from '@lightdash/common';
-import { useMutation, useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { lightdashApi } from '../api';
 
 const getOnboardingStatus = async () =>
@@ -21,18 +21,6 @@ export const useOnboardingStatus = () =>
         refetchOnMount: true,
     });
 
-const setOnboardingShownSuccess = async () =>
-    lightdashApi<undefined>({
-        url: `/org/onboardingStatus/shownSuccess`,
-        method: 'POST',
-        body: undefined,
-    });
-
-export const useOnboardingShownSuccess = () =>
-    useMutation<void, ApiError, void>(setOnboardingShownSuccess, {
-        mutationKey: ['onboarding_shown_success'],
-    });
-
 const getProjectSavedChartStatus = async (projectUuid: string) =>
     lightdashApi<ProjectSavedChartStatus>({
         url: `/projects/${projectUuid}/hasSavedCharts`,
@@ -40,10 +28,11 @@ const getProjectSavedChartStatus = async (projectUuid: string) =>
         body: undefined,
     });
 
-export const useProjectSavedChartStatus = (projectUuid: string) =>
+export const useProjectSavedChartStatus = (projectUuid: string | undefined) =>
     useQuery<ProjectSavedChartStatus, ApiError>({
         queryKey: [projectUuid, 'project-saved-chart-status'],
-        queryFn: () => getProjectSavedChartStatus(projectUuid),
+        queryFn: () => getProjectSavedChartStatus(projectUuid!),
         retry: false,
         refetchOnMount: true,
+        enabled: !!projectUuid,
     });

@@ -1,10 +1,14 @@
-import { Colors, HTMLTable } from '@blueprintjs/core';
-import { darken, transparentize } from 'polished';
+import { DEFAULT_THEME } from '@mantine/core';
+import { transparentize } from 'polished';
+import { type ReactNode } from 'react';
 import styled, { css } from 'styled-components';
 
-export const TABLE_HEADER_BG = Colors.LIGHT_GRAY4;
-export const getTableHeaderDarkerBg = (depth: number) =>
-    darken(depth * 0.03, TABLE_HEADER_BG);
+// FIXME: these colors are coming from the mantine's default theme.
+// We should use the theme from the app instead.
+export const TABLE_HEADER_BG = DEFAULT_THEME.colors.gray[0];
+
+// Needed for virtualization. Matches value from Pivot table.
+export const ROW_HEIGHT_PX = 34;
 
 export const TableScrollableWrapper = styled.div`
     display: flex;
@@ -18,14 +22,21 @@ export const TableScrollableWrapper = styled.div`
 interface TableContainerProps {
     $shouldExpand?: boolean;
     $padding?: number;
+    $tableFont?: string;
 }
 
-export const TableContainer = styled.div<TableContainerProps>`
+export const TableContainer = styled.div<
+    TableContainerProps & { children: ReactNode }
+>`
     display: flex;
     flex-direction: column;
-    padding: ${({ $padding = 10 }) => `${$padding}px`};
     min-width: 100%;
     overflow: hidden;
+
+    font-family: ${({ $tableFont }) => $tableFont ?? 'Inter, sans-serif'};
+    font-feature-settings: 'tnum';
+
+    padding: ${({ $padding = 0 }) => `${$padding}px`};
 
     ${({ $shouldExpand }) =>
         $shouldExpand
@@ -37,30 +48,72 @@ export const TableContainer = styled.div<TableContainerProps>`
             `}
 `;
 
-export const Table = styled(HTMLTable)<{ $showFooter: boolean }>`
+export const Table = styled.table<{ $showFooter?: boolean }>`
+    border-spacing: 0;
+    font-size: 14px;
     background-color: white;
     width: 100%;
     border-left: 1px solid #dcdcdd;
     border-right: 1px solid #dcdcdd;
 
+    th,
+    td {
+        padding-left: 11px;
+        padding-right: 11px;
+        padding-bottom: 6px;
+        padding-top: 6px;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    th {
+        color: #1c2127;
+        font-weight: 600;
+    }
+    td {
+        color: #1c2127;
+    }
+    tbody tr:first-child th,
+    tbody tr:first-child td,
+    tfoot tr:first-child th,
+    tfoot tr:first-child td {
+        box-shadow: inset 0 1px 0 0 rgba(17, 20, 24, 0.15);
+    }
+
+    tbody tr td,
+    tfoot tr td {
+        box-shadow: inset 0 1px 0 0 rgba(17, 20, 24, 0.15);
+    }
+
+    tbody tr td:not(:first-child),
+    tfoot tr td:not(:first-child) {
+        box-shadow: inset 1px 1px 0 0 rgba(17, 20, 24, 0.15);
+    }
+
+    th:not(:first-child) {
+        box-shadow: inset 1px 0 0 0 rgba(17, 20, 24, 0.15);
+    }
+
+    /* FIXME: everything above this line is copied from blueprint's table css */
+
     ${({ $showFooter }) =>
-        !$showFooter ? ` border-bottom: 1px solid #dcdcdd;` : undefined}
+        !$showFooter ? `border-bottom: 1px solid #dcdcdd;` : undefined}
 
     thead {
         z-index: 2;
         position: sticky;
         top: 0;
         inset-block-start: 0; /* "top" */
+    }
 
-        th:first-child {
-            border-top: none !important;
-            border-bottom: none !important;
-        }
+    thead th:first-child {
+        border-top: 1px solid #dcdcdd;
+        border-bottom: none !important;
+    }
 
-        th {
-            border-top: none !important;
-            border-bottom: none !important;
-        }
+    thead th {
+        border-top: 1px solid #dcdcdd;
+        border-bottom: none !important;
     }
 
     tfoot {
@@ -68,40 +121,37 @@ export const Table = styled(HTMLTable)<{ $showFooter: boolean }>`
         z-index: 3;
         bottom: 0;
         inset-block-end: 0; /* "bottom" */
+    }
 
-        th:first-child {
-            border-top: none !important;
-            border-bottom: none !important;
-        }
+    tfoot th:first-child {
+        border-top: none !important;
+        border-bottom: none !important;
+    }
 
-        th {
-            border-top: none !important;
-            border-bottom: none !important;
-            box-shadow: inset 0 1px 0 #dcdcdd, inset 0 -1px 0 #dcdcdd,
-                inset 1px 0 0 0 rgb(17 20 24 / 15%) !important;
-        }
+    tfoot th {
+        border-top: none !important;
+        border-bottom: none !important;
+        box-shadow: inset 0 1px 0 #dcdcdd, inset 0 -1px 0 #dcdcdd,
+            inset 1px 0 0 0 rgb(17 20 24 / 15%) !important;
     }
 
     .sticky-column {
-        position: sticky !important;
         left: 1px;
         z-index: 1;
-        background-color: white;
         word-break: break-word;
+        :hover {
+            white-space: normal;
+            background-color: white;
+        }
     }
-    .first-sticky-column {
-        box-shadow: lightgray -1px 0px 0px 0px, lightgray 0px 1px 0px 0px inset !important;
+    th.sticky-column {
+        background: white !important;
     }
+
     .last-sticky-column {
-        border-right: 2px solid darkgray;
+        border-right: 1.4px solid rgb(189, 189, 189);
     }
 `;
-
-Table.defaultProps = {
-    compact: true,
-    bordered: true,
-    striped: false,
-};
 
 export const TableFooter = styled.div`
     display: flex;
@@ -111,8 +161,14 @@ export const TableFooter = styled.div`
     margin-top: 10px;
 `;
 
+const FontSyles = `
+    font-size: 13px;
+`;
+
 const CellStyles = css<{ $isNaN: boolean }>`
     text-align: ${({ $isNaN }) => ($isNaN ? 'left' : 'right')} !important;
+    padding: 8.5px !important;
+    ${FontSyles}
 `;
 
 export const Tr = styled.tr<{
@@ -121,12 +177,18 @@ export const Tr = styled.tr<{
     ${({ $index = 0 }) =>
         $index % 2 === 1
             ? `
-                background-color: ${transparentize(0.7, Colors.LIGHT_GRAY5)};
+                background-color: ${transparentize(
+                    0.7,
+                    DEFAULT_THEME.colors.gray[1],
+                )};
             `
             : ''}
 
     :hover {
-        background-color: ${Colors.LIGHT_GRAY3} !important;
+        background-color: ${transparentize(
+            0.3,
+            DEFAULT_THEME.colors.gray[1],
+        )} !important;
     }
 
     :hover td {
@@ -143,7 +205,27 @@ export const Td = styled.td<{
     $backgroundColor?: string;
     $fontColor?: string;
     $hasData: boolean;
+    $isLargeText: boolean;
+    $isMinimal: boolean;
 }>`
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+    height: ${ROW_HEIGHT_PX}px;
+
+    ${({ $isLargeText, $isSelected, $isMinimal }) =>
+        $isLargeText
+            ? `
+                min-width: 300px;
+                white-space: ${$isSelected || $isMinimal ? 'normal' : 'nowrap'};
+                :hover {
+                    white-space: normal;
+                }
+            `
+            : ''}
+
     ${CellStyles}
 
     ${({ $isInteractive, $hasData }) =>
@@ -154,19 +236,17 @@ export const Td = styled.td<{
             : ''}
 
     ${({ $isSelected }) =>
-        $isSelected
-            ? `
-                position: relative;
-                z-index: 21;
-            `
-            : ''}
+        // this is important because click-outside will not work and it will re-open the menu
+        $isSelected ? `pointer-events: none;` : ''}
 
     ${({ $backgroundColor }) =>
         $backgroundColor
             ? `
                 background-color: ${$backgroundColor} !important;
             `
-            : ''}
+            : `
+                background-color: transparent;
+            `}
 
     ${({ $fontColor }) =>
         $fontColor
@@ -198,22 +278,7 @@ export const Td = styled.td<{
 
 export const FooterCell = styled.th<{ $isNaN: boolean }>`
     ${CellStyles}
-    ${() =>
-        `
-        background-color: ${Colors.WHITE}
-  `}
-`;
-
-export const PaginationWrapper = styled.div`
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-end;
-    align-items: center;
-`;
-
-export const PageCount = styled.span`
-    color: ${Colors.GRAY1};
-    font-size: 12px;
+    background-color: white;
 `;
 
 export const Th = styled.th``;
@@ -239,7 +304,9 @@ export const ThActionsContainer = styled.div`
     }
 `;
 
-export const TableHeaderLabelContainer = styled.div``;
+export const TableHeaderLabelContainer = styled.div`
+    ${FontSyles}
+`;
 
 export const TableHeaderRegularLabel = styled.span`
     font-weight: 400;

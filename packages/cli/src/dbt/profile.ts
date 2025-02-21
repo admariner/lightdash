@@ -1,6 +1,11 @@
-import { CreateWarehouseCredentials, ParseError } from '@lightdash/common';
-import { promises as fs } from 'fs';
+import {
+    CreateWarehouseCredentials,
+    getErrorMessage,
+    ParseError,
+} from '@lightdash/common';
+import { accessSync, constants, promises as fs } from 'fs';
 import * as yaml from 'js-yaml';
+import { homedir } from 'os';
 import * as path from 'path';
 import { convertBigquerySchema } from './targets/Bigquery';
 import { convertDatabricksSchema } from './targets/databricks';
@@ -22,9 +27,10 @@ export const loadDbtTarget = async ({
         const raw = await fs.readFile(profilePath, { encoding: 'utf8' });
         const rendered = renderProfilesYml(raw);
         allProfiles = yaml.load(rendered) as Profiles;
-    } catch (e: any) {
+    } catch (e: unknown) {
+        const msg = getErrorMessage(e);
         throw new ParseError(
-            `Could not find a valid profiles.yml file at ${profilePath}:\n  ${e.message}`,
+            `Could not find a valid profiles.yml file at ${profilePath}:\n  ${msg}`,
         );
     }
     const profile = allProfiles[profileName];
@@ -66,5 +72,19 @@ export const warehouseCredentialsFromDbtTarget = async (
             throw new ParseError(
                 `Sorry! Lightdash doesn't yet support ${target.type} dbt targets`,
             );
+    }
+};
+
+export const findDbtDefaultProfile = (): string => {
+    if (process.env.DBT_PROFILES_DIR) {
+        return process.env.DBT_PROFILES_DIR;
+    }
+    // Check in Current Working Directory
+    const profilePathFromCwd = path.join(process.cwd(), 'profiles.yml');
+    try {
+        accessSync(profilePathFromCwd, constants.F_OK);
+        return process.cwd();
+    } catch (e: unknown) {
+        return path.join(homedir(), '.dbt');
     }
 };

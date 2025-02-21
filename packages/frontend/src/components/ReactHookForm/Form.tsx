@@ -1,12 +1,12 @@
-import React, { FC, useEffect } from 'react';
+import React, { useEffect, type FC } from 'react';
 import { FormProvider } from 'react-hook-form';
-import { UseFormReturn } from 'react-hook-form/dist/types';
+import { type UseFormReturn } from 'react-hook-form/dist/types';
 import {
-    SubmitErrorHandler,
-    SubmitHandler,
+    type SubmitErrorHandler,
+    type SubmitHandler,
 } from 'react-hook-form/dist/types/form';
-import { StyledProps } from 'styled-components';
-import { useTracking } from '../../providers/TrackingProvider';
+import { type StyledProps } from 'styled-components';
+import useTracking from '../../providers/Tracking/useTracking';
 import { EventName } from '../../types/Events';
 
 interface FormProps<T extends object = any> {
@@ -17,13 +17,13 @@ interface FormProps<T extends object = any> {
     onError?: SubmitErrorHandler<T>;
 }
 
-const Form: FC<FormProps & StyledProps<any>> = ({
+const Form: FC<React.PropsWithChildren<FormProps & StyledProps<any>>> = ({
     name,
     disableSubmitOnEnter,
     methods,
     children,
     onSubmit,
-    onError,
+    onError = undefined,
     ...rest
 }) => {
     const { handleSubmit, formState } = methods;
@@ -69,10 +69,6 @@ const Form: FC<FormProps & StyledProps<any>> = ({
             </form>
         </FormProvider>
     );
-};
-
-Form.defaultProps = {
-    onError: undefined,
 };
 
 export default Form;

@@ -1,11 +1,14 @@
 import { Ability } from '@casl/ability';
 import {
+    ChartType,
     CreateDashboard,
     CreateDashboardChartTile,
     Dashboard,
     DashboardBasicDetails,
     DashboardTileTypes,
     OrganizationMemberRole,
+    PossibleAbilities,
+    SavedChart,
     SessionUser,
     Space,
     UpdateDashboard,
@@ -25,36 +28,47 @@ export const user: SessionUser = {
     isSetupComplete: true,
     userId: 0,
     role: OrganizationMemberRole.ADMIN,
-    ability: new Ability([
+    ability: new Ability<PossibleAbilities>([
         {
             subject: 'Dashboard',
             action: ['view', 'update', 'delete', 'create'],
         },
+        {
+            subject: 'Project',
+            action: ['manage'],
+        },
     ]),
     isActive: true,
     abilityRules: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
 };
 
 export const space: SpaceTable['base'] = {
     space_id: 0,
     space_uuid: '123',
     name: 'space name',
+    slug: 'space-name',
     is_private: true,
     created_at: new Date(),
     project_id: 0,
     organization_uuid: user.organizationUuid!,
+    search_vector: '',
 };
 
 export const publicSpace: Space = {
     isPrivate: false,
     organizationUuid: 'organizationUuid',
     uuid: 'spaceUuid',
+    slug: 'public-space',
     queries: [],
     projectUuid: 'projectUuid',
     dashboards: [],
     access: [],
-    name: '',
+    groupsAccess: [],
+    name: 'public-space',
     pinnedListUuid: null,
+    pinnedListOrder: null,
 };
 export const privateSpace: Space = {
     ...publicSpace,
@@ -66,6 +80,9 @@ export const dashboard: Dashboard = {
     projectUuid: 'projectUuid',
     uuid: 'uuid',
     name: 'name',
+    slug: 'name',
+
+    dashboardVersionId: 1,
     description: 'description',
     updatedAt: new Date(),
     tiles: [
@@ -80,16 +97,59 @@ export const dashboard: Dashboard = {
             y: 3,
             h: 2,
             w: 1,
+            // TODO: remove
+            tabUuid: 'tabUuid',
         },
     ],
     filters: {
         dimensions: [],
         metrics: [],
+        tableCalculations: [],
     },
     spaceUuid: 'spaceUuid',
     spaceName: 'space name',
     pinnedListUuid: null,
+    pinnedListOrder: null,
     views: 1,
+    firstViewedAt: new Date(1),
+    isPrivate: false,
+    access: [],
+    tabs: [],
+};
+
+export const chart: SavedChart = {
+    uuid: 'chart_uuid',
+    projectUuid: dashboard.projectUuid,
+    name: 'chart name',
+    slug: 'chart-name',
+
+    tableName: 'table_name',
+    metricQuery: {
+        exploreName: 'table_name',
+        dimensions: [],
+        metrics: [],
+        filters: {},
+        sorts: [],
+        limit: 0,
+        tableCalculations: [],
+    },
+    chartConfig: {
+        type: ChartType.TABLE,
+    },
+    tableConfig: {
+        columnOrder: [],
+    },
+    updatedAt: new Date(),
+    organizationUuid: user.organizationUuid!,
+    spaceUuid: 'spaceUuid',
+    spaceName: 'space name',
+    pinnedListUuid: null,
+    pinnedListOrder: null,
+    dashboardUuid: dashboard.uuid,
+    dashboardName: dashboard.name,
+    colorPalette: [],
+    isPrivate: false,
+    access: [],
 };
 
 export const dashboardsDetails: DashboardBasicDetails[] = [
@@ -102,7 +162,9 @@ export const dashboardsDetails: DashboardBasicDetails[] = [
         updatedAt: dashboard.updatedAt,
         spaceUuid: 'spaceUuid',
         pinnedListUuid: null,
+        pinnedListOrder: null,
         views: 1,
+        firstViewedAt: new Date(1),
     },
 ];
 
@@ -116,6 +178,7 @@ const createTile: CreateDashboardChartTile = {
         savedChartUuid: '123',
         title: 'title 123',
     },
+    tabUuid: undefined,
 };
 
 const createTileWithId: CreateDashboardChartTile = {
@@ -130,11 +193,19 @@ export const createDashboard: CreateDashboard = {
     filters: {
         dimensions: [],
         metrics: [],
+        tableCalculations: [],
     },
+    tabs: [],
 };
 
-export const createDashboardWithTileIds: CreateDashboard = {
+export const createDashboardWithSlug = {
     ...createDashboard,
+    slug: 'my-new-dashboard',
+};
+
+export const createDashboardWithTileIds: CreateDashboard & { slug: string } = {
+    ...createDashboard,
+    slug: 'my-new-dashboard',
     tiles: [createTileWithId],
 };
 
@@ -148,7 +219,9 @@ export const updateDashboardTiles: UpdateDashboard = {
     filters: {
         dimensions: [],
         metrics: [],
+        tableCalculations: [],
     },
+    tabs: [],
 };
 
 export const updateDashboardTilesWithIds: UpdateDashboard = {

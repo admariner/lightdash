@@ -1,32 +1,36 @@
 import {
-    Button,
-    Dialog,
-    DialogBody,
-    DialogFooter,
-    DialogProps,
-} from '@blueprintjs/core';
-import {
-    assertUnreachable,
-    Dashboard,
     DashboardTileTypes,
+    assertUnreachable,
     defaultTileSize,
+    type Dashboard,
+    type DashboardLoomTileProperties,
+    type DashboardMarkdownTile,
+    type DashboardMarkdownTileProperties,
 } from '@lightdash/common';
-import { FC, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import {
+    Button,
+    Group,
+    Modal,
+    Stack,
+    Title,
+    type ModalProps,
+} from '@mantine/core';
+import { useForm, type UseFormReturnType } from '@mantine/form';
+import { IconMarkdown, IconVideo } from '@tabler/icons-react';
+import { useState, type FC } from 'react';
 import { v4 as uuid4 } from 'uuid';
-import Form from '../../ReactHookForm/Form';
-import ChartTileForm from './ChartTileForm';
+import MantineIcon from '../../common/MantineIcon';
 import LoomTileForm from './LoomTileForm';
 import MarkdownTileForm from './MarkdownTileForm';
+import { getLoomId, markdownTileContentTransform } from './utils';
 
 type Tile = Dashboard['tiles'][number];
 type TileProperties = Tile['properties'];
 
-interface AddProps extends DialogProps {
-    type?: DashboardTileTypes;
-    onClose?: () => void;
+type AddProps = ModalProps & {
+    type: DashboardTileTypes.LOOM | DashboardTileTypes.MARKDOWN;
     onConfirm: (tile: Tile) => void;
-}
+};
 
 export const TileAddModal: FC<AddProps> = ({
     type,
@@ -36,13 +40,36 @@ export const TileAddModal: FC<AddProps> = ({
 }) => {
     const [errorMessage, setErrorMessage] = useState<string>();
 
+    const getValidators = () => {
+        const urlValidator = {
+            url: (value: string | undefined) =>
+                getLoomId(value) ? null : 'Loom url not valid',
+        };
+        const titleValidator = {
+            title: (value: string | undefined) =>
+                !value || !value.length ? 'Required field' : null,
+        };
+        if (type === DashboardTileTypes.LOOM)
+            return { ...urlValidator, ...titleValidator };
+    };
+
     const form = useForm<TileProperties>({
-        mode: 'onChange',
+        validate: getValidators(),
+        validateInputOnChange: ['title', 'url', 'content'],
+        transformValues(values) {
+            if (type === DashboardTileTypes.MARKDOWN) {
+                return markdownTileContentTransform(
+                    values as DashboardMarkdownTile['properties'],
+                );
+            }
+
+            return values;
+        },
     });
 
     if (!type) return null;
 
-    const handleConfirm = (properties: TileProperties) => {
+    const handleConfirm = form.onSubmit(({ ...properties }) => {
         if (type === DashboardTileTypes.MARKDOWN) {
             const markdownForm = properties as any;
             if (!markdownForm.title && !markdownForm.content) {
@@ -55,57 +82,75 @@ export const TileAddModal: FC<AddProps> = ({
             uuid: uuid4(),
             properties: properties as any,
             type,
+            tabUuid: undefined,
             ...defaultTileSize,
         });
-    };
+        form.reset();
+        setErrorMessage('');
+    });
 
     const handleClose = () => {
         form.reset();
+        setErrorMessage('');
         onClose?.();
     };
 
     return (
-        <Dialog
-            lazy
-            title="Add tile to dashboard"
+        <Modal
+            title={
+                <Group spacing="xs">
+                    <MantineIcon
+                        size="lg"
+                        color="blue.8"
+                        icon={
+                            type === DashboardTileTypes.MARKDOWN
+                                ? IconMarkdown
+                                : IconVideo
+                        }
+                    />
+                    <Title order={4}>Add {type} tile</Title>
+                </Group>
+            }
             {...modalProps}
+            size="xl"
             onClose={handleClose}
         >
-            <Form
-                title="Add tile to dashboard"
-                methods={form}
-                onSubmit={handleConfirm}
-            >
-                <DialogBody>
-                    {type === DashboardTileTypes.SAVED_CHART ? (
-                        <ChartTileForm />
-                    ) : type === DashboardTileTypes.MARKDOWN ? (
-                        <MarkdownTileForm />
+            <form onSubmit={handleConfirm}>
+                <Stack spacing="lg" pt="sm">
+                    {type === DashboardTileTypes.MARKDOWN ? (
+                        <MarkdownTileForm
+                            form={
+                                form as UseFormReturnType<
+                                    DashboardMarkdownTileProperties['properties']
+                                >
+                            }
+                        />
                     ) : type === DashboardTileTypes.LOOM ? (
-                        <LoomTileForm />
+                        <LoomTileForm
+                            form={
+                                form as UseFormReturnType<
+                                    DashboardLoomTileProperties['properties']
+                                >
+                            }
+                            withHideTitle={false}
+                        />
                     ) : (
                         assertUnreachable(type, 'Tile type not supported')
                     )}
-                </DialogBody>
 
-                <DialogFooter
-                    actions={
-                        <>
-                            {errorMessage}
+                    {errorMessage}
 
-                            <Button onClick={handleClose}>Cancel</Button>
+                    <Group position="right" mt="sm">
+                        <Button variant="outline" onClick={handleClose}>
+                            Cancel
+                        </Button>
 
-                            <Button
-                                intent="primary"
-                                type="submit"
-                                disabled={!form.formState.isValid}
-                            >
-                                Add
-                            </Button>
-                        </>
-                    }
-                />
-            </Form>
-        </Dialog>
+                        <Button type="submit" disabled={!form.isValid()}>
+                            Add
+                        </Button>
+                    </Group>
+                </Stack>
+            </form>
+        </Modal>
     );
 };

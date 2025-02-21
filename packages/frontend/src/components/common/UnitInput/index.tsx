@@ -1,9 +1,9 @@
-import { Button, InputGroupProps } from '@blueprintjs/core';
-import { ChangeEvent, forwardRef, useCallback, useMemo, useRef } from 'react';
-import { StyledNumberInput } from './UnitInput.style';
+import { Button, TextInput, type TextInputProps } from '@mantine/core';
+import { mergeRefs } from '@mantine/hooks';
+import { forwardRef, useCallback, useMemo, useRef } from 'react';
 
 export type UnitInputProps = Omit<
-    InputGroupProps,
+    TextInputProps,
     'name' | 'value' | 'defaultValue' | 'onChange'
 > & {
     name: string;
@@ -14,7 +14,7 @@ export type UnitInputProps = Omit<
     onChange: (value: string | undefined) => void;
 };
 
-export const getValueAndUnit = (
+const getValueAndUnit = (
     valueWithUnit: string,
     units: string[],
 ): [string?, string?] => {
@@ -32,7 +32,6 @@ const UnitInput = forwardRef<HTMLInputElement, UnitInputProps>(
             units,
             value: valueWithUnit,
             defaultValue: defaultValueWithUnit,
-            fallbackValue,
             onChange,
             ...rest
         },
@@ -78,33 +77,26 @@ const UnitInput = forwardRef<HTMLInputElement, UnitInputProps>(
         const isValueNumeric = !!(value || defaultValue)?.match(/^[0-9]+$/);
 
         return (
-            <StyledNumberInput
-                inputRef={(input: HTMLInputElement) => {
-                    if (!input) return;
-
-                    inputRef.current = input;
-
-                    if (typeof ref === 'function') {
-                        ref(input);
-                    } else if (ref) {
-                        ref.current = input;
-                    }
-                }}
+            <TextInput
+                ref={mergeRefs(inputRef, ref)}
                 type="number"
-                id={`${name}-input`}
                 name={name}
                 {...rest}
                 placeholder={defaultValue}
                 value={!isValueDefault && isValueNumeric ? value : ''}
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                    handleChange(e.target.value, value ? unit : defaultUnit)
-                }
-                rightElement={
+                onChange={(e) => {
+                    handleChange(e.target.value, value ? unit : defaultUnit);
+                }}
+                rightSectionWidth="auto"
+                rightSection={
                     !defaultUnit ||
                     (isValueDefault && !isValueNumeric) ? undefined : (
                         <Button
-                            minimal
-                            small
+                            size="xs"
+                            px="xs"
+                            mx="xxs"
+                            variant="light"
+                            h={rest.size === 'xs' ? 24 : 32}
                             onClick={() =>
                                 handleChange(
                                     value || defaultValue,
@@ -117,6 +109,13 @@ const UnitInput = forwardRef<HTMLInputElement, UnitInputProps>(
                         </Button>
                     )
                 }
+                styles={{
+                    rightSection: {
+                        ...(rest.size === 'xs'
+                            ? { display: 'flex', alignItems: 'center' }
+                            : {}),
+                    },
+                }}
             />
         );
     },

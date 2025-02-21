@@ -6,28 +6,40 @@ import {
     SessionUser,
     SmptError,
 } from '@lightdash/common';
+import { marked } from 'marked';
 import * as nodemailer from 'nodemailer';
 import hbs from 'nodemailer-express-handlebars';
 import Mail from 'nodemailer/lib/mailer';
 import { AuthenticationType } from 'nodemailer/lib/smtp-connection';
 import path from 'path';
 import { LightdashConfig } from '../../config/parseConfig';
-import Logger from '../../logger';
+import Logger from '../../logging/logger';
 
 export type AttachmentUrl = {
     path: string;
     filename: string;
+    localPath: string;
+    truncated: boolean;
 };
-type Dependencies = {
-    lightdashConfig: Pick<LightdashConfig, 'smtp' | 'siteUrl'>;
+type EmailClientArguments = {
+    lightdashConfig: Pick<LightdashConfig, 'smtp' | 'siteUrl' | 'query'>;
+};
+
+type EmailTemplate = {
+    template: string;
+    context: Record<
+        string,
+        string | boolean | number | AttachmentUrl[] | undefined
+    >;
+    attachments?: (Mail.Attachment | AttachmentUrl)[] | undefined;
 };
 
 export default class EmailClient {
-    lightdashConfig: Pick<LightdashConfig, 'smtp' | 'siteUrl'>;
+    lightdashConfig: Pick<LightdashConfig, 'smtp' | 'siteUrl' | 'query'>;
 
     transporter: nodemailer.Transporter | undefined;
 
-    constructor({ lightdashConfig }: Dependencies) {
+    constructor({ lightdashConfig }: EmailClientArguments) {
         this.lightdashConfig = lightdashConfig;
 
         if (this.lightdashConfig.smtp) {
@@ -60,8 +72,7 @@ export default class EmailClient {
                     from: `"${this.lightdashConfig.smtp.sender.name}" <${this.lightdashConfig.smtp.sender.email}>`,
                 },
             );
-
-            this.transporter.verify((error: any) => {
+            this.transporter.verify((error) => {
                 if (error) {
                     throw new SmptError(
                         `Failed to verify email transporter. ${error}`,
@@ -79,7 +90,8 @@ export default class EmailClient {
                 hbs({
                     viewEngine: {
                         partialsDir: path.join(__dirname, './templates/'),
-                        defaultLayout: false,
+                        defaultLayout: undefined,
+                        extname: '.html',
                     },
                     viewPath: path.join(__dirname, './templates/'),
                     extName: '.html',
@@ -89,11 +101,8 @@ export default class EmailClient {
     }
 
     private async sendEmail(
-        options: Mail.Options & {
-            template: string;
-            context: Record<string, any>;
-        },
-    ) {
+        options: Mail.Options & EmailTemplate,
+    ): Promise<void> {
         if (this.transporter) {
             try {
                 const info = await this.transporter.sendMail(options);
@@ -116,6 +125,25 @@ export default class EmailClient {
                 host: this.lightdashConfig.siteUrl,
             },
             text: `Forgotten your password? No worries! Just click on the link below within the next 24 hours to create a new one: ${link.url}`,
+        });
+    }
+
+    public async sendGoogleSheetsErrorNotificationEmail(
+        recipient: string,
+        schedulerName: string,
+        schedulerUrl: string,
+    ) {
+        return this.sendEmail({
+            to: recipient,
+            subject: `Google Sheets sync: "${schedulerName}" disabled due to error`,
+            template: 'googleSheetsSyncDisabledNotification',
+            context: {
+                host: this.lightdashConfig.siteUrl,
+                subject: 'Google Sheets Sync disabled',
+                description: `There's an error with your Google Sheets "${schedulerName}" sync. We've disabled it to prevent further errors.`,
+                schedulerUrl,
+            },
+            text: `Your Google Sheets ${schedulerName} sync has been disabled due to an error`,
         });
     }
 
@@ -150,11 +178,15 @@ export default class EmailClient {
             case ProjectMemberRole.VIEWER:
                 roleAction = 'view';
                 break;
+            case ProjectMemberRole.INTERACTIVE_VIEWER:
+                roleAction = 'explore';
+                break;
             case ProjectMemberRole.EDITOR:
+            case ProjectMemberRole.DEVELOPER:
                 roleAction = 'edit';
                 break;
             case ProjectMemberRole.ADMIN:
-                roleAction = 'admin';
+                roleAction = 'manage';
                 break;
             default:
                 const nope: never = projectMember.role;
@@ -179,10 +211,16 @@ export default class EmailClient {
         subject: string,
         title: string,
         description: string,
+        message: string | undefined,
         date: string,
         frequency: string,
         imageUrl: string,
         url: string,
+        schedulerUrl: string,
+        includeLinks: boolean,
+        pdfFile?: string,
+        expirationDays?: number,
+        deliveryType: string = 'Scheduled delivery',
     ) {
         return this.sendEmail({
             to: recipient,
@@ -190,14 +228,29 @@ export default class EmailClient {
             template: 'imageNotification',
             context: {
                 title,
+                hasMessage: !!message,
+                message: message && marked(message),
                 imageUrl,
                 description,
                 date,
                 frequency,
                 url,
                 host: this.lightdashConfig.siteUrl,
+                schedulerUrl,
+                expirationDays,
+                deliveryType,
+                includeLinks,
             },
             text: title,
+            attachments: pdfFile
+                ? [
+                      {
+                          filename: `${title}.pdf`,
+                          path: pdfFile,
+                          contentType: 'application/pdf',
+                      },
+                  ]
+                : undefined,
         });
     }
 
@@ -206,22 +259,36 @@ export default class EmailClient {
         subject: string,
         title: string,
         description: string,
+        message: string | undefined,
+        date: string,
+        frequency: string,
         attachment: AttachmentUrl,
         url: string,
+        schedulerUrl: string,
+        includeLinks: boolean,
+        expirationDays?: number,
     ) {
-        const downloadCsv = `
-        <h4><a href="${attachment.path}">Download results</a></h4>
-        `;
+        const csvUrl = attachment.path;
         return this.sendEmail({
             to: recipient,
             subject,
-            template: 'csvNotification',
+            template: 'chartCsvNotification',
             context: {
                 title,
                 description,
+                hasMessage: !!message,
+                message: message && marked(message),
+                date,
+                frequency,
                 url,
+                csvUrl,
+                truncated: attachment.truncated,
+                noResults: attachment.path === '#no-results',
+                maxCells: this.lightdashConfig.query.csvCellsLimit,
                 host: this.lightdashConfig.siteUrl,
-                downloadCsv,
+                schedulerUrl,
+                expirationDays,
+                includeLinks,
             },
             text: title,
         });
@@ -232,30 +299,43 @@ export default class EmailClient {
         subject: string,
         title: string,
         description: string,
+        message: string | undefined,
+        date: string,
+        frequency: string,
         attachments: AttachmentUrl[],
         url: string,
+        schedulerUrl: string,
+        includeLinks: boolean,
+        expirationDays?: number,
     ) {
-        const downloadCsv = `
-        <h3>Download results:</h3>
-        <ul>
-            ${attachments
-                .map(
-                    (attachment) =>
-                        `<li><a href="${attachment.path}">${attachment.filename}</a></li>`,
-                )
-                .join('')}
-        </ul>
-        `;
+        const csvUrls = attachments.filter(
+            (attachment) => !attachment.truncated,
+        );
+
+        const truncatedCsvUrls = attachments.filter(
+            (attachment) => attachment.truncated,
+        );
+
         return this.sendEmail({
             to: recipient,
             subject,
-            template: 'csvNotification',
+            template: 'dashboardCsvNotification',
             context: {
                 title,
                 description,
+                hasMessage: !!message,
+                message: message && marked(message),
+                date,
+                frequency,
+                csvUrls,
+                truncatedCsvUrls,
+                truncated: truncatedCsvUrls.length > 0,
+                maxCells: this.lightdashConfig.query.csvCellsLimit,
                 url,
                 host: this.lightdashConfig.siteUrl,
-                downloadCsv,
+                schedulerUrl,
+                expirationDays,
+                includeLinks,
             },
             text: title,
         });

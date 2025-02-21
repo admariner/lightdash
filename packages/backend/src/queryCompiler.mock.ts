@@ -37,6 +37,7 @@ export const EXPLORE: Pick<Explore, 'targetDatabase' | 'tables'> = {
 };
 
 export const METRIC_QUERY_NO_CALCS: MetricQuery = {
+    exploreName: 'table1',
     dimensions: ['table1_dim_1', 'table_2_dim_2'],
     metrics: ['table_3_metric_1', 'table55_metric__23_1'],
     filters: {},
@@ -85,6 +86,7 @@ export const METRIC_QUERY_VALID_REFERENCES_COMPILED: CompiledMetricQuery = {
             compiledSql: 'metric reference "table_3_metric_1"',
         },
     ],
+    compiledCustomDimensions: [],
 };
 
 export const METRIC_QUERY_MISSING_REFERENCE: MetricQuery = {
@@ -149,8 +151,11 @@ export const METRIC_QUERY_WITH_ADDITIONAL_METRICS_COMPILED: CompiledMetricQuery 
                 source: undefined,
                 showUnderlyingValues: undefined,
                 format: undefined,
-                groupLabel: undefined,
                 filters: [],
+                requiredAttributes: undefined,
+                dimensionReference: undefined,
+                groups: [],
             },
         ],
+        compiledCustomDimensions: [],
     };

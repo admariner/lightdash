@@ -1,9 +1,11 @@
 import {
     CreateSnowflakeCredentials,
+    getErrorMessage,
     ParseError,
     WarehouseTypes,
 } from '@lightdash/common';
 import { JSONSchemaType } from 'ajv';
+import betterAjvErrors from 'better-ajv-errors';
 import { promises as fs } from 'fs';
 import { ajv } from '../../ajv';
 import { Target } from '../types';
@@ -108,9 +110,10 @@ export const convertSnowflakeSchema = async (
         if (keyfilePath) {
             try {
                 privateKey = await fs.readFile(keyfilePath, 'utf8');
-            } catch (e: any) {
+            } catch (e: unknown) {
+                const msg = getErrorMessage(e);
                 throw new ParseError(
-                    `Cannot read keyfile for snowflake target at: ${keyfilePath}:\n  ${e.message}`,
+                    `Cannot read keyfile for snowflake target at: ${keyfilePath}:\n  ${msg}`,
                 );
             }
         }
@@ -130,10 +133,14 @@ export const convertSnowflakeSchema = async (
             queryTag: target.query_tag,
         };
     }
-    const lineErrorMessages = (validate.errors || [])
-        .map((err) => `Field at ${err.instancePath} ${err.message}`)
-        .join('\n');
+
+    const errs = betterAjvErrors(
+        snowflakeSchema,
+        target,
+        validate.errors || [],
+    );
+
     throw new ParseError(
-        `Couldn't read profiles.yml file for ${target.type}:\n  ${lineErrorMessages}`,
+        `Couldn't read profiles.yml file for ${target.type}:\n${errs}`,
     );
 };

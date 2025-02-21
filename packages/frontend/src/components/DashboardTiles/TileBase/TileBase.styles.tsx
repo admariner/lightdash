@@ -1,35 +1,20 @@
-import { Card, Colors, H5 } from '@blueprintjs/core';
-import styled, { createGlobalStyle, css } from 'styled-components';
+import styled, { css } from 'styled-components';
+import { TILE_HEADER_HEIGHT, TILE_HEADER_MARGIN_BOTTOM } from './constants';
 
 interface HeaderContainerProps {
     $isEditMode: boolean;
     $isHovering?: boolean;
+    $isEmpty?: boolean;
 }
-
-export const TileBaseWrapper = styled.div<HeaderContainerProps>`
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    padding: 16px;
-    background: ${Colors.WHITE};
-    border-radius: 2px;
-    box-shadow: 0 0 0 1px #11141826;
-
-    ${(props) =>
-        props.$isEditMode && props.$isHovering
-            ? `
-                box-shadow: 0 0 0 1px ${Colors.GRAY4};
-            `
-            : ''}
-`;
 
 export const HeaderContainer = styled.div<HeaderContainerProps>`
     display: flex;
     flex-direction: row;
-    align-items: flex-start;
+    justify-content: space-between;
+    align-items: center;
     gap: 8px;
-    margin-bottom: 12px;
-    height: 24px;
+    height: ${TILE_HEADER_HEIGHT}px;
+    margin-bottom: ${TILE_HEADER_MARGIN_BOTTOM}px;
 
     ${(props) =>
         props.$isEditMode
@@ -42,18 +27,22 @@ export const HeaderContainer = styled.div<HeaderContainerProps>`
                 }
             `
             : ''}
-`;
 
-export const GlobalTileStyles = createGlobalStyle`
-  .react-draggable.react-draggable-dragging ${TileBaseWrapper} {
-    box-shadow: 0 0 0 1px ${Colors.BLUE4};
-  }
+    ${({ $isEmpty }) =>
+        $isEmpty
+            ? css`
+                  position: absolute;
+                  right: 16px;
+              `
+            : ''}
 `;
 
 interface TileTitleProps {
     $hovered?: boolean;
 }
 
+// FIXME: colors in this file are hardcoded to mantine values.
+// #FFF is white, #212529 is gray.9
 export const TitleWrapper = styled.div<TileTitleProps>`
     flex-grow: 1;
     overflow: hidden;
@@ -67,26 +56,27 @@ export const TitleWrapper = styled.div<TileTitleProps>`
                 ? css`
                       white-space: normal;
                       overflow: visible;
-                      z-index: 1;
+                      z-index: 10;
 
                       a {
-                          outline: 8px solid ${Colors.WHITE};
-                          background-color: ${Colors.WHITE};
+                          outline: 8px solid #fff;
+                          background-color: #fff;
                       }
                   `
                 : ''}
-        }
     }
 `;
 
 export const TileTitleLink = styled.a<TileTitleProps>`
     font-weight: 600;
     font-size: 16px;
-    color: ${Colors.DARK_GRAY1};
+    color: #212529;
     text-decoration: none;
 
     :hover {
-        color: ${Colors.DARK_GRAY1} !important;
+        color: #212529 !important;
+        text-decoration: underline;
+        text-wrap: wrap;
     }
 
     ${({ $hovered }) =>
@@ -123,22 +113,4 @@ export const ChartContainer = styled.div`
     flex: 1;
     overflow: hidden;
     display: flex;
-`;
-
-export const TooltipContent = styled.p`
-    max-width: 400px;
-    margin: 0;
-`;
-
-export const FilterWrapper = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-`;
-
-export const FilterLabel = styled.p`
-    margin-bottom: 5px;
-    color: ${Colors.GRAY5};
-    font-size: 12px;
-    font-weight: 500;
 `;

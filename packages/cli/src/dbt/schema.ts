@@ -27,7 +27,7 @@ export type YamlModel = {
 };
 
 export type YamlSchema = {
-    version: 2;
+    version?: 2;
     models?: YamlModel[];
 };
 
@@ -75,8 +75,8 @@ const findModelInYaml = async ({
                 Required<Pick<YamlSchema, 'models'>>,
             modelIndex,
         };
-    } catch (e: any) {
-        if (e.code === 'ENOENT') {
+    } catch (e: unknown) {
+        if (e instanceof Error && 'code' in e && e.code === 'ENOENT') {
             return undefined;
         }
         throw e;

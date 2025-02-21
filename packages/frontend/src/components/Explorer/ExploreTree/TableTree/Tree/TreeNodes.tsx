@@ -1,25 +1,25 @@
 import {
-    AdditionalMetric,
-    Dimension,
-    isDimension,
-    Metric,
     OrderFieldsByStrategy,
+    isDimension,
     sortTimeFrames,
+    type AdditionalMetric,
+    type CustomDimension,
+    type Dimension,
+    type Metric,
 } from '@lightdash/common';
-import { FC, useMemo } from 'react';
+import { useMemo, type FC } from 'react';
 import TreeGroupNode from './TreeGroupNode';
-import {
-    isGroupNode,
-    Node,
-    NodeMap,
-    useTableTreeContext,
-} from './TreeProvider';
 import TreeSingleNode from './TreeSingleNode';
+import { isGroupNode, type Node, type NodeMap } from './types';
+import { useTableTreeContext } from './useTableTree';
 
 const sortNodes =
     (
         orderStrategy: OrderFieldsByStrategy,
-        itemsMap: Record<string, Dimension | Metric | AdditionalMetric>,
+        itemsMap: Record<
+            string,
+            Dimension | Metric | AdditionalMetric | CustomDimension
+        >,
     ) =>
     (a: Node, b: Node) => {
         if (orderStrategy === OrderFieldsByStrategy.INDEX) {
@@ -41,10 +41,7 @@ const sortNodes =
         }
     };
 
-const TreeNodes: FC<{ nodeMap: NodeMap; depth: number }> = ({
-    nodeMap,
-    depth,
-}) => {
+const TreeNodes: FC<{ nodeMap: NodeMap }> = ({ nodeMap }) => {
     const { itemsMap, orderFieldsBy } = useTableTreeContext();
     const sortedItems = useMemo(() => {
         return Object.values(nodeMap).sort(
@@ -53,15 +50,15 @@ const TreeNodes: FC<{ nodeMap: NodeMap; depth: number }> = ({
     }, [nodeMap, orderFieldsBy, itemsMap]);
 
     return (
-        <div>
+        <>
             {sortedItems.map((node) =>
                 isGroupNode(node) ? (
-                    <TreeGroupNode key={node.key} node={node} depth={depth} />
+                    <TreeGroupNode key={node.key} node={node} />
                 ) : (
-                    <TreeSingleNode key={node.key} node={node} depth={depth} />
+                    <TreeSingleNode key={node.key} node={node} />
                 ),
             )}
-        </div>
+        </>
     );
 };
 

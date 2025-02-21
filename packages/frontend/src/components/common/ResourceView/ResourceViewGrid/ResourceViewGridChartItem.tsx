@@ -1,29 +1,34 @@
+import { type ResourceViewChartItem } from '@lightdash/common';
 import {
     Box,
-    Divider,
     Flex,
     Group,
     Paper,
     Text,
+    Tooltip,
     useMantineTheme,
 } from '@mantine/core';
 import { useDisclosure, useHover } from '@mantine/hooks';
 import { IconEye } from '@tabler/icons-react';
-import { FC } from 'react';
+import { type FC, type ReactNode } from 'react';
+import { ResourceIcon } from '../../ResourceIcon';
 import ResourceViewActionMenu, {
-    ResourceViewActionMenuCommonProps,
+    type ResourceViewActionMenuCommonProps,
 } from '../ResourceActionMenu';
-import ResourceIcon from '../ResourceIcon';
-import { ResourceViewChartItem } from '../resourceTypeUtils';
+import { getResourceViewsSinceWhenDescription } from '../resourceUtils';
 
 interface ResourceViewGridChartItemProps
     extends Pick<ResourceViewActionMenuCommonProps, 'onAction'> {
     item: ResourceViewChartItem;
+    allowDelete?: boolean;
+    dragIcon: ReactNode;
 }
 
 const ResourceViewGridChartItem: FC<ResourceViewGridChartItemProps> = ({
     item,
+    allowDelete,
     onAction,
+    dragIcon,
 }) => {
     const { hovered, ref } = useHover();
     const [opened, handlers] = useDisclosure(false);
@@ -33,6 +38,7 @@ const ResourceViewGridChartItem: FC<ResourceViewGridChartItemProps> = ({
         <Paper
             ref={ref}
             component={Flex}
+            pos="relative"
             direction="column"
             p={0}
             withBorder
@@ -51,21 +57,34 @@ const ResourceViewGridChartItem: FC<ResourceViewGridChartItemProps> = ({
                     borderBottomColor: theme.colors.gray[3],
                 }}
             >
+                {dragIcon}
                 <ResourceIcon item={item} />
 
-                <Text lineClamp={2} fz="sm" fw={600}>
-                    {item.data.name}
-                </Text>
+                <Tooltip
+                    label={item.data.description}
+                    position="top"
+                    disabled={!item.data.description}
+                >
+                    <Text lineClamp={2} fz="sm" fw={600}>
+                        {item.data.name}
+                    </Text>
+                </Tooltip>
             </Group>
 
             <Flex pl="md" pr="xs" h={32} justify="space-between" align="center">
-                <Flex align="center" gap={4}>
-                    <IconEye color={theme.colors.gray[6]} size={14} />
+                <Tooltip
+                    position="bottom-start"
+                    disabled={!item.data.views || !item.data.firstViewedAt}
+                    label={getResourceViewsSinceWhenDescription(item)}
+                >
+                    <Flex align="center" gap={4}>
+                        <IconEye color={theme.colors.gray[6]} size={14} />
 
-                    <Text size={14} color="gray.6" fz="xs">
-                        {item.data.views} views
-                    </Text>
-                </Flex>
+                        <Text size={14} color="gray.6" fz="xs">
+                            {item.data.views} views
+                        </Text>
+                    </Flex>
+                </Tooltip>
 
                 <Box
                     sx={{
@@ -75,7 +94,7 @@ const ResourceViewGridChartItem: FC<ResourceViewGridChartItemProps> = ({
                         opacity: hovered || opened ? 1 : 0,
                     }}
                     component="div"
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent<HTMLDivElement>) => {
                         e.stopPropagation();
                         e.preventDefault();
                     }}
@@ -83,6 +102,7 @@ const ResourceViewGridChartItem: FC<ResourceViewGridChartItemProps> = ({
                     <ResourceViewActionMenu
                         item={item}
                         isOpen={opened}
+                        allowDelete={allowDelete}
                         onOpen={handlers.open}
                         onClose={handlers.close}
                         onAction={onAction}

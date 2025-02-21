@@ -1,24 +1,36 @@
-import { ParseError } from '@lightdash/common';
+import { getErrorMessage, ParseError } from '@lightdash/common';
+import { Command, InvalidArgumentError } from 'commander';
 import execa from 'execa';
 import { LightdashAnalytics } from '../../analytics/analytics';
 import GlobalState from '../../globalState';
 import { generateHandler } from '../generate';
+import { DbtCompileOptions } from './compile';
 
-type DbtRunHandlerOptions = {
+type DbtRunHandlerOptions = DbtCompileOptions & {
     profilesDir: string;
     projectDir: string;
-    target: string | undefined;
-    profile: string | undefined;
-    select: string[] | undefined;
-    models: string[] | undefined;
     excludeMeta: boolean;
     verbose: boolean;
+    assumeYes: boolean;
+    assumeNo: boolean;
 };
+
 export const dbtRunHandler = async (
     options: DbtRunHandlerOptions,
-    command: any,
+    command: Command,
 ) => {
     GlobalState.setVerbose(options.verbose);
+
+    if (!command.parent) {
+        throw new Error('Parent command not found');
+    }
+
+    if (options.assumeYes && options.assumeNo) {
+        throw new InvalidArgumentError(
+            'Cannot use both --assume-yes and --assume-no flags',
+        );
+    }
+
     await LightdashAnalytics.track({
         event: 'dbt_command.started',
         properties: {
@@ -26,8 +38,13 @@ export const dbtRunHandler = async (
         },
     });
 
-    const commands = command.parent.args.reduce((acc: any, arg: any) => {
-        if (arg === '--verbose') return acc;
+    const commands = command.parent.args.reduce<string[]>((acc, arg) => {
+        if (
+            arg === '--verbose' ||
+            arg === '--assume-yes' ||
+            arg === '--assume-no'
+        )
+            return acc;
         return [...acc, arg];
     }, []);
 
@@ -38,19 +55,22 @@ export const dbtRunHandler = async (
             stdio: 'inherit',
         });
         await subprocess;
-    } catch (e: any) {
+    } catch (e: unknown) {
+        const msg = getErrorMessage(e);
         await LightdashAnalytics.track({
             event: 'dbt_command.error',
             properties: {
                 command: `${commands}`,
-                error: `${e.message}`,
+                error: `${msg}`,
             },
         });
-        throw new ParseError(`Failed to run dbt:\n  ${e.message}`);
+        throw new ParseError(`Failed to run dbt:\n  ${msg}`);
     }
-    await generateHandler({
-        ...options,
-        assumeYes: true,
-        excludeMeta: options.excludeMeta,
-    });
+
+    if (!options.assumeNo) {
+        await generateHandler({
+            ...options,
+            excludeMeta: options.excludeMeta,
+        });
+    }
 };

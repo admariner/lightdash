@@ -1,57 +1,86 @@
-import { Classes, Colors, Text } from '@blueprintjs/core';
-import { Tooltip2 } from '@blueprintjs/popover2';
 import {
-    DimensionType,
+    getItemId,
     isAdditionalMetric,
+    isCustomDimension,
     isDimension,
+    isField,
+    isFilterableField,
+    isMetric,
+    isTableCalculation,
     isTimeInterval,
-    MetricType,
     timeFrameConfigs,
+    type AdditionalMetric,
+    type Item,
 } from '@lightdash/common';
-import React, { FC } from 'react';
+import {
+    ActionIcon,
+    Group,
+    Highlight,
+    HoverCard,
+    NavLink,
+    Text,
+    Tooltip,
+} from '@mantine/core';
+import {
+    IconAlertTriangle,
+    IconFilter,
+    IconInfoCircle,
+} from '@tabler/icons-react';
+import { darken, lighten } from 'polished';
+import { memo, useMemo, type FC } from 'react';
 import { useToggle } from 'react-use';
 import { getItemBgColor } from '../../../../../hooks/useColumns';
+import { useFilters } from '../../../../../hooks/useFilters';
+import useTracking from '../../../../../providers/Tracking/useTracking';
+import { EventName } from '../../../../../types/Events';
 import FieldIcon from '../../../../common/Filters/FieldIcon';
-import HighlightedText from '../../../../common/HighlightedText';
-import { Highlighted, Row, RowIcon, SpanFlex } from '../TableTree.styles';
-import CustomMetricButtons from './CustomMetricButtons';
-import FieldButtons from './FieldButtons';
-import { Node, useTableTreeContext } from './TreeProvider';
+import MantineIcon from '../../../../common/MantineIcon';
+import { ItemDetailMarkdown, ItemDetailPreview } from '../ItemDetailPreview';
+import { useItemDetail } from '../useItemDetails';
+import TreeSingleNodeActions from './TreeSingleNodeActions';
+import { type Node } from './types';
+import { useTableTreeContext } from './useTableTree';
 
-export const getItemIconName = (type: DimensionType | MetricType) => {
-    switch (type) {
-        case DimensionType.STRING || MetricType.STRING:
-            return 'citation';
-        case DimensionType.NUMBER || MetricType.NUMBER:
-            return 'numerical';
-        case DimensionType.DATE || MetricType.DATE:
-            return 'calendar';
-        case DimensionType.BOOLEAN || MetricType.BOOLEAN:
-            return 'segmented-control';
-        case DimensionType.TIMESTAMP:
-            return 'time';
-        default:
-            return 'numerical';
-    }
+type Props = {
+    node: Node;
 };
 
-const TreeSingleNode: FC<{ node: Node; depth: number }> = ({ node, depth }) => {
-    const [isHover, toggle] = useToggle(false);
+const TreeSingleNode: FC<Props> = memo(({ node }) => {
     const {
         itemsMap,
         selectedItems,
         isSearching,
         searchResults,
         searchQuery,
+        missingCustomMetrics,
+        itemsAlerts,
+        missingCustomDimensions,
         onItemClick,
     } = useTableTreeContext();
+    const { isFilteredField } = useFilters();
+    const { showItemDetail } = useItemDetail();
+
+    const { addFilter } = useFilters();
+    const { track } = useTracking();
+
+    const [isHover, toggleHover] = useToggle(false);
+    const [isMenuOpen, toggleMenu] = useToggle(false);
+
     const isSelected = selectedItems.has(node.key);
     const isVisible = !isSearching || searchResults.has(node.key);
+
     const item = itemsMap[node.key];
 
-    if (!item || !isVisible) {
-        return null;
-    }
+    const metricInfo = useMemo(() => {
+        if (isMetric(item)) {
+            return {
+                type: item.type,
+                sql: item.sql,
+            };
+        }
+    }, [item]);
+
+    if (!item || !isVisible) return null;
 
     const timeIntervalLabel =
         isDimension(item) &&
@@ -59,52 +88,245 @@ const TreeSingleNode: FC<{ node: Node; depth: number }> = ({ node, depth }) => {
         isTimeInterval(item.timeInterval)
             ? timeFrameConfigs[item.timeInterval].getLabel()
             : undefined;
-    const label: string = timeIntervalLabel || item.label || item.name;
-    return (
-        <Row
-            depth={depth}
-            selected={isSelected}
-            bgColor={getItemBgColor(item)}
-            onClick={() => onItemClick(node.key, item)}
-            onMouseEnter={() => toggle(true)}
-            onMouseLeave={() => toggle(false)}
-        >
-            <FieldIcon
-                item={item}
-                color={isDimension(item) ? Colors.BLUE1 : Colors.ORANGE1}
-                size={16}
-                style={{ marginRight: '8px' }}
-            />
-            <Tooltip2
-                lazy
-                content={item.description}
-                className={Classes.TEXT_OVERFLOW_ELLIPSIS}
-            >
-                <Text ellipsize>
-                    <HighlightedText
-                        text={label}
-                        query={searchQuery || ''}
-                        highlightElement={Highlighted}
+
+    const isFiltered = isField(item) && isFilteredField(item);
+
+    const label =
+        isField(item) || isAdditionalMetric(item)
+            ? timeIntervalLabel || item.label || item.name
+            : item.name;
+
+    const isMissing =
+        (isAdditionalMetric(item) &&
+            missingCustomMetrics &&
+            missingCustomMetrics.includes(item)) ||
+        (isCustomDimension(item) &&
+            missingCustomDimensions &&
+            missingCustomDimensions.includes(item));
+
+    const alerts = itemsAlerts?.[getItemId(item)];
+
+    const description = isField(item) ? item.description : undefined;
+
+    const bgColor = getItemBgColor(item);
+
+    // TODO: Add getFieldType function to common which should return FieldType enum (which should also have CUSTOM_METRIC, CUSTOM_DIMENSION)
+    const getFieldIconColor = (field: Item | AdditionalMetric) => {
+        if (isCustomDimension(field) || isDimension(field)) return 'blue.9';
+        if (isAdditionalMetric(field)) return 'yellow.9';
+        if (isTableCalculation(field)) return 'green.9';
+        if (isMetric(field)) return 'yellow.9';
+
+        return 'yellow.9';
+    };
+
+    /**
+     * Handles putting together and opening the shared modal for a field's
+     * detailed description.
+     */
+    const onOpenDescriptionView = () => {
+        toggleHover(false);
+
+        showItemDetail({
+            header: (
+                <Group>
+                    <FieldIcon
+                        item={item}
+                        color={getFieldIconColor(item)}
+                        size="md"
                     />
-                </Text>
-            </Tooltip2>
-            <SpanFlex />
-            {isAdditionalMetric(item) ? (
-                <CustomMetricButtons
-                    node={item}
-                    isHovered={isHover}
-                    isSelected={isSelected}
-                />
+                    <Text size="md">{label}</Text>
+                </Group>
+            ),
+            detail: description ? (
+                <ItemDetailMarkdown source={description}></ItemDetailMarkdown>
             ) : (
-                <FieldButtons
-                    node={item}
-                    onOpenSourceDialog={() => undefined}
+                <Text color="gray">No description available.</Text>
+            ),
+        });
+    };
+
+    const onToggleMenu = () => {
+        toggleHover(false);
+        toggleMenu();
+    };
+
+    return (
+        <NavLink
+            component="div"
+            noWrap
+            sx={{
+                backgroundColor: isSelected ? bgColor : undefined,
+                '&:hover': {
+                    backgroundColor: isSelected
+                        ? darken(0.02, bgColor)
+                        : lighten(0.1, bgColor),
+                },
+            }}
+            icon={
+                isMissing ? (
+                    <MantineIcon icon={IconAlertTriangle} color="gray.7" />
+                ) : (
+                    <FieldIcon
+                        item={item}
+                        color={getFieldIconColor(item)}
+                        size="md"
+                    />
+                )
+            }
+            onClick={() => onItemClick(node.key, item)}
+            onMouseEnter={() => toggleHover(true)}
+            onMouseLeave={() => toggleHover(false)}
+            label={
+                <Group noWrap spacing={'xs'}>
+                    <HoverCard
+                        openDelay={300}
+                        keepMounted={false}
+                        shadow="subtle"
+                        withinPortal
+                        withArrow
+                        disabled={!description && !isMissing}
+                        position="right"
+                        radius="md"
+                        /** Ensures the hover card does not overlap with the right-hand menu. */
+                        offset={isFiltered ? 80 : 40}
+                    >
+                        <HoverCard.Target>
+                            <Highlight
+                                component={Text}
+                                truncate
+                                sx={{ flexGrow: 1 }}
+                                highlight={searchQuery || ''}
+                            >
+                                {label}
+                            </Highlight>
+                        </HoverCard.Target>
+                        <HoverCard.Dropdown
+                            hidden={!isHover}
+                            p="xs"
+                            /**
+                             * Takes up space to the right, so it's OK to go fairly wide in the interest
+                             * of readability.
+                             */
+                            maw={500}
+                            /**
+                             * If we don't stop propagation, users may unintentionally toggle dimensions/metrics
+                             * while interacting with the hovercard.
+                             */
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            {isMissing ? (
+                                `This field from '${item.table}' table is no longer available`
+                            ) : (
+                                <ItemDetailPreview
+                                    onViewDescription={onOpenDescriptionView}
+                                    description={description}
+                                    metricInfo={metricInfo}
+                                />
+                            )}
+                        </HoverCard.Dropdown>
+                    </HoverCard>
+                    {alerts?.infos && alerts.infos.length > 0 ? (
+                        <Tooltip
+                            withinPortal
+                            maw={300}
+                            multiline
+                            label={alerts.infos.join('\n')}
+                        >
+                            <MantineIcon
+                                icon={IconInfoCircle}
+                                color="blue.6"
+                                style={{ flexShrink: 0 }}
+                            />
+                        </Tooltip>
+                    ) : null}
+                    {alerts?.warnings && alerts.warnings.length > 0 ? (
+                        <Tooltip
+                            withinPortal
+                            maw={300}
+                            multiline
+                            label={alerts.warnings.join('\n')}
+                        >
+                            <MantineIcon
+                                icon={IconAlertTriangle}
+                                color="yellow.9"
+                                style={{ flexShrink: 0 }}
+                            />
+                        </Tooltip>
+                    ) : null}
+                    {alerts?.errors && alerts.errors.length > 0 ? (
+                        <Tooltip
+                            withinPortal
+                            maw={300}
+                            multiline
+                            label={alerts.errors.join('\n')}
+                        >
+                            <MantineIcon
+                                icon={IconAlertTriangle}
+                                color="red.6"
+                                style={{ flexShrink: 0 }}
+                            />
+                        </Tooltip>
+                    ) : null}
+                    {(isFiltered || isHover) &&
+                    !isAdditionalMetric(item) &&
+                    isFilterableField(item) ? (
+                        <Tooltip
+                            withinPortal
+                            label={
+                                isFiltered
+                                    ? 'This field is filtered'
+                                    : `Click here to add filter`
+                            }
+                        >
+                            <ActionIcon
+                                onClick={(
+                                    e: React.MouseEvent<HTMLButtonElement>,
+                                ) => {
+                                    track({
+                                        name: EventName.ADD_FILTER_CLICKED,
+                                    });
+                                    if (!isFiltered) addFilter(item, undefined);
+                                    e.stopPropagation(); // Do not toggle the field on filter click
+                                }}
+                            >
+                                <MantineIcon
+                                    icon={IconFilter}
+                                    color="gray.7"
+                                    style={{ flexShrink: 0 }}
+                                />
+                            </ActionIcon>
+                        </Tooltip>
+                    ) : null}
+
+                    {isField(item) && item.hidden ? (
+                        <Tooltip
+                            withinPortal
+                            label="This field has been hidden in the dbt project. It's recommend to remove it from the query"
+                        >
+                            <MantineIcon
+                                icon={IconAlertTriangle}
+                                color="yellow.9"
+                                style={{ flexShrink: 0 }}
+                            />
+                        </Tooltip>
+                    ) : null}
+                </Group>
+            }
+            rightSection={
+                <TreeSingleNodeActions
+                    item={item}
                     isHovered={isHover}
                     isSelected={isSelected}
+                    isOpened={isMenuOpen}
+                    hasDescription={!!description}
+                    onViewDescription={onOpenDescriptionView}
+                    onMenuChange={onToggleMenu}
                 />
-            )}
-        </Row>
+            }
+            data-testid={`tree-single-node-${label}`}
+        />
     );
-};
+});
 
 export default TreeSingleNode;

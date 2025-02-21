@@ -1,6 +1,6 @@
-import { isField, ResultRow } from '@lightdash/common';
-import { Cell } from '@tanstack/react-table';
-import { FC } from 'react';
+import { isField, type ResultRow } from '@lightdash/common';
+import { type Cell } from '@tanstack/react-table';
+import { type FC } from 'react';
 import styled from 'styled-components';
 
 interface RichBodyCellProps {
@@ -12,7 +12,10 @@ const Link = styled.span`
     text-decoration-style: dotted;
 `;
 
-const RichBodyCell: FC<RichBodyCellProps> = ({ children, cell }) => {
+const RichBodyCell: FC<React.PropsWithChildren<RichBodyCellProps>> = ({
+    children,
+    cell,
+}) => {
     const item = cell.column.columnDef.meta?.item;
     const hasUrls = isField(item) && (item.urls || []).length > 0;
 

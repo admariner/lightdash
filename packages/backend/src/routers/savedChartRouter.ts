@@ -1,14 +1,10 @@
+import { getObjectValue } from '@lightdash/common';
 import express from 'express';
 import {
     allowApiKeyAuthentication,
     isAuthenticated,
     unauthorisedInDemo,
 } from '../controllers/authentication';
-import {
-    analyticsService,
-    projectService,
-    savedChartsService,
-} from '../services/services';
 
 export const savedChartRouter = express.Router();
 
@@ -17,8 +13,9 @@ savedChartRouter.get(
     allowApiKeyAuthentication,
     isAuthenticated,
     async (req, res, next) => {
-        savedChartsService
-            .get(req.params.savedQueryUuid, req.user!)
+        req.services
+            .getSavedChartService()
+            .get(getObjectValue(req.params, 'savedQueryUuid'), req.user!)
             .then((results) => {
                 res.json({
                     status: 'ok',
@@ -34,8 +31,12 @@ savedChartRouter.get(
     allowApiKeyAuthentication,
     isAuthenticated,
     async (req, res, next) => {
-        analyticsService
-            .getChartViews(req.params.savedQueryUuid)
+        req.services
+            .getSavedChartService()
+            .getViewStats(
+                req.user!,
+                getObjectValue(req.params, 'savedQueryUuid'),
+            )
             .then((results) => {
                 res.json({
                     status: 'ok',
@@ -51,10 +52,11 @@ savedChartRouter.get(
     allowApiKeyAuthentication,
     isAuthenticated,
     async (req, res, next) =>
-        projectService
+        req.services
+            .getProjectService()
             .getAvailableFiltersForSavedQuery(
                 req.user!,
-                req.params.savedQueryUuid,
+                getObjectValue(req.params, 'savedQueryUuid'),
             )
             .then((results) => {
                 res.json({
@@ -71,8 +73,9 @@ savedChartRouter.delete(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        savedChartsService
-            .delete(req.user!, req.params.savedQueryUuid)
+        req.services
+            .getSavedChartService()
+            .delete(req.user!, getObjectValue(req.params, 'savedQueryUuid'))
             .then(() => {
                 res.json({
                     status: 'ok',
@@ -89,8 +92,13 @@ savedChartRouter.patch(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        savedChartsService
-            .update(req.user!, req.params.savedQueryUuid, req.body)
+        req.services
+            .getSavedChartService()
+            .update(
+                req.user!,
+                getObjectValue(req.params, 'savedQueryUuid'),
+                req.body,
+            )
             .then((results) => {
                 res.json({
                     status: 'ok',
@@ -107,8 +115,12 @@ savedChartRouter.patch(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        savedChartsService
-            .togglePinning(req.user!, req.params.savedQueryUuid)
+        req.services
+            .getSavedChartService()
+            .togglePinning(
+                req.user!,
+                getObjectValue(req.params, 'savedQueryUuid'),
+            )
             .then((results) => {
                 res.json({
                     status: 'ok',
@@ -125,8 +137,13 @@ savedChartRouter.post(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        savedChartsService
-            .createVersion(req.user!, req.params.savedQueryUuid, req.body)
+        req.services
+            .getSavedChartService()
+            .createVersion(
+                req.user!,
+                getObjectValue(req.params, 'savedQueryUuid'),
+                req.body,
+            )
             .then((results) => {
                 res.json({
                     status: 'ok',
@@ -145,10 +162,12 @@ savedChartRouter.get(
         try {
             res.json({
                 status: 'ok',
-                results: await savedChartsService.getSchedulers(
-                    req.user!,
-                    req.params.savedQueryUuid,
-                ),
+                results: await req.services
+                    .getSavedChartService()
+                    .getSchedulers(
+                        req.user!,
+                        getObjectValue(req.params, 'savedQueryUuid'),
+                    ),
             });
         } catch (e) {
             next(e);
@@ -165,11 +184,13 @@ savedChartRouter.post(
         try {
             res.json({
                 status: 'ok',
-                results: await savedChartsService.createScheduler(
-                    req.user!,
-                    req.params.savedQueryUuid,
-                    req.body,
-                ),
+                results: await req.services
+                    .getSavedChartService()
+                    .createScheduler(
+                        req.user!,
+                        getObjectValue(req.params, 'savedQueryUuid'),
+                        req.body,
+                    ),
             });
         } catch (e) {
             next(e);

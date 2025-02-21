@@ -1,6 +1,12 @@
-import { DbtMetric, DbtModelColumn, DbtModelNode } from '../types/dbt';
-import { Table } from '../types/explore';
+import {
+    type DbtMetric,
+    type DbtModelColumn,
+    type DbtModelNode,
+    type V9MetricRef,
+} from '../types/dbt';
+import { type Table } from '../types/explore';
 import { DimensionType, FieldType, MetricType } from '../types/field';
+import type { LightdashProjectConfig } from '../types/lightdashProjectConfig';
 import { OrderFieldsByStrategy } from '../types/table';
 import { TimeFrames } from '../types/timeFrames';
 
@@ -89,7 +95,13 @@ export const DBT_METRIC_DERIVED: DbtMetric = {
     name: 'dbt_metric_5',
     calculation_method: 'derived',
     expression: 'dbt_metric_11 / dbt_metric_1',
+    refs: [],
     metrics: [['dbt_metric_11'], ['dbt_metric_1']], // one per each reference
+};
+
+export const DBT_V9_METRIC: DbtMetric & { refs: V9MetricRef[] } = {
+    ...DBT_METRIC,
+    refs: [{ name: 'myTable' }],
 };
 
 const ID_COLUMN_WITHOUT_METRICS: DbtModelColumn = {
@@ -151,6 +163,18 @@ const COLUMN_WITH_NO_TIME_INTERVALS: Record<string, DbtModelColumn> = {
     },
 };
 
+const COLUMN_WITH_OFF_BOOLEAN_TIME_INTERVALS: Record<string, DbtModelColumn> = {
+    user_created: {
+        name: 'user_created',
+        data_type: DimensionType.TIMESTAMP,
+        meta: {
+            dimension: {
+                time_intervals: false,
+            },
+        },
+    },
+};
+
 const COLUMN_WITH_OFF_TIME_INTERVALS: Record<string, DbtModelColumn> = {
     user_created: {
         name: 'user_created',
@@ -176,7 +200,7 @@ const COLUMN_WITH_CUSTOM_TIME_INTERVALS: Record<string, DbtModelColumn> = {
 };
 
 export const model: DbtModelNode & { relation_name: string } = {
-    alias: '',
+    alias: 'myTable',
     checksum: { name: '', checksum: '' },
     fqn: [],
     language: '',
@@ -201,6 +225,166 @@ export const model: DbtModelNode & { relation_name: string } = {
     original_file_path: '',
 };
 
+export const BASE_LIGHTDASH_TABLE: Omit<Table, 'lineageGraph'> = {
+    name: model.name,
+    label: 'My table',
+    database: model.database,
+    schema: model.schema,
+    sqlTable: model.relation_name,
+    description: model.description,
+    sqlWhere: undefined,
+    requiredAttributes: undefined,
+    dimensions: {
+        myColumnName: {
+            compact: undefined,
+            description: undefined,
+            fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
+            format: undefined,
+            groups: [],
+            colors: undefined,
+            hidden: false,
+            index: 0,
+            label: 'My column name',
+            name: 'myColumnName',
+            round: undefined,
+            source: undefined,
+            sql: '${TABLE}.myColumnName',
+            table: 'myTable',
+            tableLabel: 'My table',
+            timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
+            type: DimensionType.STRING,
+            isIntervalBase: false,
+        },
+    },
+    metrics: {},
+    orderFieldsBy: OrderFieldsByStrategy.LABEL,
+    requiredFilters: [],
+    groupLabel: undefined,
+    groupDetails: {},
+};
+
+export const MODEL_WITH_GROUP_LABEL: DbtModelNode & { relation_name: string } =
+    {
+        ...model,
+        meta: {
+            group_label: 'revenue',
+        },
+    };
+
+export const MODEL_WITH_GROUPS_BLOCK: DbtModelNode & { relation_name: string } =
+    {
+        ...model,
+        meta: {
+            group_details: {
+                revenue: {
+                    label: 'Revenue',
+                    description: 'Revenue description',
+                },
+            },
+        },
+        columns: {
+            user_id: {
+                name: 'user_id',
+                data_type: DimensionType.STRING,
+                meta: {
+                    metrics: {
+                        user_id_count: {
+                            type: MetricType.COUNT_DISTINCT,
+                            groups: ['revenue'],
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+export const LIGHTDASH_TABLE_WITH_GROUP_LABEL: Omit<Table, 'lineageGraph'> = {
+    ...BASE_LIGHTDASH_TABLE,
+    groupLabel: 'revenue',
+};
+
+export const LIGHTDASH_TABLE_WITH_GROUP_BLOCK: Omit<Table, 'lineageGraph'> = {
+    ...BASE_LIGHTDASH_TABLE,
+    dimensions: {
+        user_id: {
+            compact: undefined,
+            description: undefined,
+            fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
+            format: undefined,
+            groups: [],
+            colors: undefined,
+            hidden: false,
+            index: 0,
+            label: 'User id',
+            name: 'user_id',
+            round: undefined,
+            source: undefined,
+            sql: '${TABLE}.user_id',
+            table: 'myTable',
+            tableLabel: 'My table',
+            timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
+            type: DimensionType.STRING,
+            isIntervalBase: false,
+        },
+    },
+    metrics: {
+        user_id_count: {
+            compact: undefined,
+            description: 'Count distinct of User id',
+            dimensionReference: 'myTable_user_id',
+            fieldType: FieldType.METRIC,
+            filters: [],
+            format: undefined,
+            groups: ['revenue'],
+            hidden: false,
+            index: 0,
+            isAutoGenerated: false,
+            label: 'User id count',
+            name: 'user_id_count',
+            percentile: undefined,
+            requiredAttributes: undefined,
+            round: undefined,
+            showUnderlyingValues: undefined,
+            source: undefined,
+            sql: '${TABLE}.user_id',
+            table: 'myTable',
+            tableLabel: 'My table',
+            type: MetricType.COUNT_DISTINCT,
+            spotlight: {
+                visibility: 'show',
+                categories: [],
+            },
+        },
+    },
+    groupDetails: {
+        revenue: {
+            label: 'Revenue',
+            description: 'Revenue description',
+        },
+    },
+};
+
+export const MODEL_WITH_SQL_WHERE: DbtModelNode & {
+    relation_name: string;
+} = {
+    ...model,
+    meta: {
+        sql_where: '${payment_method} IS NOT NULL',
+    },
+};
+
+export const MODEL_WITH_SQL_FILTER: DbtModelNode & {
+    relation_name: string;
+} = {
+    ...model,
+    meta: {
+        sql_filter: '${payment_method} IS NOT NULL',
+    },
+};
 export const MODEL_WITH_NO_METRICS: DbtModelNode & { relation_name: string } = {
     ...model,
     columns: {
@@ -210,15 +394,11 @@ export const MODEL_WITH_NO_METRICS: DbtModelNode & { relation_name: string } = {
 
 export const LIGHTDASH_TABLE_WITHOUT_AUTO_METRICS: Omit<Table, 'lineageGraph'> =
     {
-        name: MODEL_WITH_NO_METRICS.name,
-        label: 'My table',
-        database: MODEL_WITH_NO_METRICS.database,
-        schema: MODEL_WITH_NO_METRICS.schema,
-        sqlTable: MODEL_WITH_NO_METRICS.relation_name,
-        description: MODEL_WITH_NO_METRICS.description,
+        ...BASE_LIGHTDASH_TABLE,
         dimensions: {
             user_id: {
                 fieldType: FieldType.DIMENSION,
+                requiredAttributes: undefined,
                 description: undefined,
                 type: DimensionType.STRING,
                 sql: '${TABLE}.user_id',
@@ -227,18 +407,18 @@ export const LIGHTDASH_TABLE_WITHOUT_AUTO_METRICS: Omit<Table, 'lineageGraph'> =
                 table: MODEL_WITH_NO_METRICS.name,
                 tableLabel: 'My table',
                 source: undefined,
-                group: undefined,
                 timeInterval: undefined,
+                timeIntervalBaseDimensionName: undefined,
                 hidden: false,
                 format: undefined,
                 round: undefined,
                 compact: undefined,
-                groupLabel: undefined,
+                groups: [],
+                colors: undefined,
                 index: 0,
+                isIntervalBase: false,
             },
         },
-        metrics: {},
-        orderFieldsBy: OrderFieldsByStrategy.LABEL,
     };
 
 export const LIGHTDASH_TABLE_WITH_DBT_METRICS: Omit<Table, 'lineageGraph'> = {
@@ -261,9 +441,13 @@ export const LIGHTDASH_TABLE_WITH_DBT_METRICS: Omit<Table, 'lineageGraph'> = {
             compact: undefined,
             showUnderlyingValues: undefined,
             source: undefined,
-            groupLabel: undefined,
+            groups: [],
             filters: [],
             index: 0,
+            spotlight: {
+                visibility: 'show',
+                categories: [],
+            },
         },
         dbt_metric_2: {
             description: 'Description',
@@ -282,9 +466,13 @@ export const LIGHTDASH_TABLE_WITH_DBT_METRICS: Omit<Table, 'lineageGraph'> = {
             compact: undefined,
             showUnderlyingValues: undefined,
             source: undefined,
-            groupLabel: undefined,
+            groups: [],
             filters: [],
             index: 1,
+            spotlight: {
+                visibility: 'show',
+                categories: [],
+            },
         },
         dbt_metric_3: {
             description: 'Description',
@@ -303,9 +491,13 @@ export const LIGHTDASH_TABLE_WITH_DBT_METRICS: Omit<Table, 'lineageGraph'> = {
             compact: undefined,
             showUnderlyingValues: undefined,
             source: undefined,
-            groupLabel: undefined,
+            groups: [],
             filters: [],
             index: 2,
+            spotlight: {
+                visibility: 'show',
+                categories: [],
+            },
         },
         dbt_metric_4: {
             description: 'Description',
@@ -324,9 +516,13 @@ export const LIGHTDASH_TABLE_WITH_DBT_METRICS: Omit<Table, 'lineageGraph'> = {
             compact: undefined,
             showUnderlyingValues: undefined,
             source: undefined,
-            groupLabel: undefined,
+            groups: [],
             filters: [],
             index: 3,
+            spotlight: {
+                visibility: 'show',
+                categories: [],
+            },
         },
         dbt_metric_5: {
             description: 'Description',
@@ -345,12 +541,48 @@ export const LIGHTDASH_TABLE_WITH_DBT_METRICS: Omit<Table, 'lineageGraph'> = {
             compact: undefined,
             showUnderlyingValues: undefined,
             source: undefined,
-            groupLabel: undefined,
+            groups: [],
             filters: [],
             index: 4,
+            spotlight: {
+                visibility: 'show',
+                categories: [],
+            },
         },
     },
 };
+
+export const LIGHTDASH_TABLE_WITH_DBT_V9_METRICS: Omit<Table, 'lineageGraph'> =
+    {
+        ...LIGHTDASH_TABLE_WITHOUT_AUTO_METRICS,
+        metrics: {
+            dbt_metric_1: {
+                description: 'Description',
+                fieldType: FieldType.METRIC,
+                hidden: false,
+                isAutoGenerated: false,
+                label: 'Label',
+                name: 'dbt_metric_1',
+                sql: '${TABLE}.dbt_metric_1',
+                table: 'myTable',
+                tableLabel: 'My table',
+                type: MetricType.SUM,
+                format: undefined,
+                round: undefined,
+                percentile: undefined,
+                compact: undefined,
+                showUnderlyingValues: undefined,
+                source: undefined,
+                groups: [],
+                filters: [],
+                index: 0,
+                spotlight: {
+                    visibility: 'show',
+                    categories: [],
+                },
+            },
+        },
+    };
 
 export const MODEL_WITH_METRIC: DbtModelNode & { relation_name: string } = {
     ...model,
@@ -404,15 +636,12 @@ export const MODEL_WITH_WRONG_METRICS: DbtModelNode = {
 };
 
 export const LIGHTDASH_TABLE_WITH_METRICS: Omit<Table, 'lineageGraph'> = {
-    name: MODEL_WITH_METRIC.name,
-    label: 'My table',
-    database: MODEL_WITH_METRIC.database,
-    schema: MODEL_WITH_METRIC.schema,
-    sqlTable: MODEL_WITH_METRIC.relation_name,
+    ...BASE_LIGHTDASH_TABLE,
     description: MODEL_WITH_METRIC.description,
     dimensions: {
         user_id: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.STRING,
             sql: '${TABLE}.user_id',
@@ -421,17 +650,20 @@ export const LIGHTDASH_TABLE_WITH_METRICS: Omit<Table, 'lineageGraph'> = {
             table: MODEL_WITH_METRIC.name,
             tableLabel: 'My table',
             source: undefined,
-            group: undefined,
             timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: [],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
         num_participating_athletes: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.NUMBER,
             sql: 'num_participating_men + num_participating_women',
@@ -440,13 +672,15 @@ export const LIGHTDASH_TABLE_WITH_METRICS: Omit<Table, 'lineageGraph'> = {
             table: MODEL_WITH_METRIC.name,
             tableLabel: 'My table',
             source: undefined,
-            group: undefined,
             timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: [],
+            colors: undefined,
+            isIntervalBase: false,
             index: 1,
         },
     },
@@ -468,9 +702,15 @@ export const LIGHTDASH_TABLE_WITH_METRICS: Omit<Table, 'lineageGraph'> = {
             percentile: undefined,
             compact: undefined,
             showUnderlyingValues: undefined,
-            groupLabel: undefined,
+            groups: [],
             filters: [],
             index: 0,
+            dimensionReference: 'myTable_user_id',
+            requiredAttributes: undefined,
+            spotlight: {
+                visibility: 'show',
+                categories: [],
+            },
         },
         total_num_participating_athletes: {
             fieldType: FieldType.METRIC,
@@ -489,12 +729,17 @@ export const LIGHTDASH_TABLE_WITH_METRICS: Omit<Table, 'lineageGraph'> = {
             percentile: undefined,
             compact: undefined,
             showUnderlyingValues: undefined,
-            groupLabel: undefined,
+            groups: [],
             filters: [],
             index: 1,
+            dimensionReference: 'myTable_num_participating_athletes',
+            requiredAttributes: undefined,
+            spotlight: {
+                visibility: 'show',
+                categories: [],
+            },
         },
     },
-    orderFieldsBy: OrderFieldsByStrategy.LABEL,
 };
 
 export const MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS: DbtModelNode & {
@@ -513,15 +758,11 @@ export const LIGHTDASH_TABLE_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS_BIGQUERY: Omi
     Table,
     'lineageGraph'
 > = {
-    name: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
-    label: 'My table',
-    database: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.database,
-    schema: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.schema,
-    sqlTable: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.relation_name,
-    description: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.description,
+    ...BASE_LIGHTDASH_TABLE,
     dimensions: {
         user_created: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.TIMESTAMP,
             sql: '${TABLE}.user_created',
@@ -530,17 +771,20 @@ export const LIGHTDASH_TABLE_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS_BIGQUERY: Omi
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: undefined,
             timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: [],
+            colors: undefined,
             index: 0,
+            isIntervalBase: true,
         },
-        user_created_RAW: {
+        user_created_raw: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.TIMESTAMP,
             sql: '${TABLE}.user_created',
@@ -549,128 +793,142 @@ export const LIGHTDASH_TABLE_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS_BIGQUERY: Omi
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.RAW,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
-        user_created_DAY: {
+        user_created_day: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
-            sql: 'DATETIME_TRUNC(${TABLE}.user_created, DAY)',
+            sql: 'TIMESTAMP_TRUNC(${TABLE}.user_created, DAY)',
             name: 'user_created_day',
             label: 'User created day',
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.DAY,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
-        user_created_WEEK: {
+        user_created_week: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
-            sql: 'DATETIME_TRUNC(${TABLE}.user_created, WEEK)',
+            sql: 'TIMESTAMP_TRUNC(${TABLE}.user_created, WEEK)',
+
             name: 'user_created_week',
             label: 'User created week',
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.WEEK,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
-        user_created_MONTH: {
+        user_created_month: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
-            sql: 'DATETIME_TRUNC(${TABLE}.user_created, MONTH)',
+            sql: 'TIMESTAMP_TRUNC(${TABLE}.user_created, MONTH)',
+
             name: 'user_created_month',
             label: 'User created month',
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.MONTH,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
+            isIntervalBase: false,
             index: 0,
         },
-        user_created_QUARTER: {
+        user_created_quarter: {
             description: undefined,
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             format: undefined,
-            group: 'user_created',
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             hidden: false,
             label: 'User created quarter',
             name: 'user_created_quarter',
             round: undefined,
             compact: undefined,
             source: undefined,
-            sql: 'DATETIME_TRUNC(${TABLE}.user_created, QUARTER)',
+            sql: 'TIMESTAMP_TRUNC(${TABLE}.user_created, QUARTER)',
             table: 'myTable',
             tableLabel: 'My table',
             timeInterval: TimeFrames.QUARTER,
+            timeIntervalBaseDimensionName: 'user_created',
             type: DimensionType.DATE,
             index: 0,
+            isIntervalBase: false,
         },
-        user_created_YEAR: {
+        user_created_year: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
-            sql: 'DATETIME_TRUNC(${TABLE}.user_created, YEAR)',
+            sql: 'TIMESTAMP_TRUNC(${TABLE}.user_created, YEAR)',
+
             name: 'user_created_year',
             label: 'User created year',
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.YEAR,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
     },
-    metrics: {},
-    orderFieldsBy: OrderFieldsByStrategy.LABEL,
 };
 
 export const LIGHTDASH_TABLE_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS_SNOWFLAKE: Omit<
     Table,
     'lineageGraph'
 > = {
-    name: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
-    label: 'My table',
-    database: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.database,
-    schema: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.schema,
-    sqlTable: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.relation_name,
-    description: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.description,
+    ...BASE_LIGHTDASH_TABLE,
     dimensions: {
         user_created: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.TIMESTAMP,
             sql: "TO_TIMESTAMP_NTZ(CONVERT_TIMEZONE('UTC', ${TABLE}.user_created))",
@@ -679,107 +937,114 @@ export const LIGHTDASH_TABLE_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS_SNOWFLAKE: Om
             tableLabel: 'My table',
             label: 'User created',
             source: undefined,
-            group: undefined,
             timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: [],
+            colors: undefined,
             index: 0,
+            isIntervalBase: true,
         },
-        user_created_RAW: {
+        user_created_raw: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.TIMESTAMP,
             sql: "TO_TIMESTAMP_NTZ(CONVERT_TIMEZONE('UTC', ${TABLE}.user_created))",
             name: 'user_created_raw',
-
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
-
             label: 'User created raw',
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.RAW,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
-        user_created_DAY: {
+        user_created_day: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
             sql: "DATE_TRUNC('DAY', TO_TIMESTAMP_NTZ(CONVERT_TIMEZONE('UTC', ${TABLE}.user_created)))",
+
             name: 'user_created_day',
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
 
             label: 'User created day',
-
+            isIntervalBase: false,
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.DAY,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
         },
-        user_created_WEEK: {
+        user_created_week: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
             sql: "DATE_TRUNC('WEEK', TO_TIMESTAMP_NTZ(CONVERT_TIMEZONE('UTC', ${TABLE}.user_created)))",
             name: 'user_created_week',
-
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
-
             label: 'User created week',
-
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.WEEK,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
-        user_created_MONTH: {
+        user_created_month: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
             sql: "DATE_TRUNC('MONTH', TO_TIMESTAMP_NTZ(CONVERT_TIMEZONE('UTC', ${TABLE}.user_created)))",
             name: 'user_created_month',
-
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
-
             label: 'User created month',
-
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.MONTH,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
-        user_created_QUARTER: {
+        user_created_quarter: {
             description: undefined,
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             format: undefined,
-            group: 'user_created',
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             hidden: false,
             label: 'User created quarter',
             name: 'user_created_quarter',
@@ -787,36 +1052,38 @@ export const LIGHTDASH_TABLE_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS_SNOWFLAKE: Om
             compact: undefined,
             source: undefined,
             sql: "DATE_TRUNC('QUARTER', TO_TIMESTAMP_NTZ(CONVERT_TIMEZONE('UTC', ${TABLE}.user_created)))",
+
             table: 'myTable',
             tableLabel: 'My table',
             timeInterval: TimeFrames.QUARTER,
+            timeIntervalBaseDimensionName: 'user_created',
             type: DimensionType.DATE,
             index: 0,
+            isIntervalBase: false,
         },
-        user_created_YEAR: {
+        user_created_year: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
             sql: "DATE_TRUNC('YEAR', TO_TIMESTAMP_NTZ(CONVERT_TIMEZONE('UTC', ${TABLE}.user_created)))",
             name: 'user_created_year',
-
             table: MODEL_WITH_DEFAULT_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
-
             label: 'User created year',
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.YEAR,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
     },
-    metrics: {},
-    orderFieldsBy: OrderFieldsByStrategy.LABEL,
 };
 
 export const MODEL_WITH_OFF_TIME_INTERVAL_DIMENSIONS: DbtModelNode & {
@@ -826,19 +1093,21 @@ export const MODEL_WITH_OFF_TIME_INTERVAL_DIMENSIONS: DbtModelNode & {
     columns: COLUMN_WITH_OFF_TIME_INTERVALS,
 };
 
+export const MODEL_WITH_OFF_BOOLEAN_TIME_INTERVAL_DIMENSIONS: DbtModelNode & {
+    relation_name: string;
+} = {
+    ...model,
+    columns: COLUMN_WITH_OFF_BOOLEAN_TIME_INTERVALS,
+};
 export const LIGHTDASH_TABLE_WITH_OFF_TIME_INTERVAL_DIMENSIONS: Omit<
     Table,
     'lineageGraph'
 > = {
-    name: MODEL_WITH_OFF_TIME_INTERVAL_DIMENSIONS.name,
-    label: 'My table',
-    database: MODEL_WITH_OFF_TIME_INTERVAL_DIMENSIONS.database,
-    schema: MODEL_WITH_OFF_TIME_INTERVAL_DIMENSIONS.schema,
-    sqlTable: MODEL_WITH_OFF_TIME_INTERVAL_DIMENSIONS.relation_name,
-    description: MODEL_WITH_OFF_TIME_INTERVAL_DIMENSIONS.description,
+    ...BASE_LIGHTDASH_TABLE,
     dimensions: {
         user_created: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.TIMESTAMP,
             sql: '${TABLE}.user_created',
@@ -847,18 +1116,18 @@ export const LIGHTDASH_TABLE_WITH_OFF_TIME_INTERVAL_DIMENSIONS: Omit<
             table: MODEL_WITH_OFF_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: undefined,
             timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: [],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
     },
-    metrics: {},
-    orderFieldsBy: OrderFieldsByStrategy.LABEL,
 };
 
 export const MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS: DbtModelNode & {
@@ -872,15 +1141,11 @@ export const LIGHTDASH_TABLE_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS: Omit<
     Table,
     'lineageGraph'
 > = {
-    name: MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS.name,
-    label: 'My table',
-    database: MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS.database,
-    schema: MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS.schema,
-    sqlTable: MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS.relation_name,
-    description: MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS.description,
+    ...BASE_LIGHTDASH_TABLE,
     dimensions: {
         user_created: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
             sql: '${TABLE}.user_created',
@@ -889,17 +1154,20 @@ export const LIGHTDASH_TABLE_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS: Omit<
             table: MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: undefined,
             timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: [],
+            colors: undefined,
             index: 0,
+            isIntervalBase: true,
         },
-        user_created_YEAR: {
+        user_created_year: {
             fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
             description: undefined,
             type: DimensionType.DATE,
             sql: 'DATE_TRUNC(${TABLE}.user_created, YEAR)',
@@ -908,18 +1176,18 @@ export const LIGHTDASH_TABLE_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS: Omit<
             table: MODEL_WITH_CUSTOM_TIME_INTERVAL_DIMENSIONS.name,
             tableLabel: 'My table',
             source: undefined,
-            group: 'user_created',
             timeInterval: TimeFrames.YEAR,
+            timeIntervalBaseDimensionName: 'user_created',
             hidden: false,
             format: undefined,
             round: undefined,
             compact: undefined,
-            groupLabel: undefined,
+            groups: ['User created'],
+            colors: undefined,
             index: 0,
+            isIntervalBase: false,
         },
     },
-    metrics: {},
-    orderFieldsBy: OrderFieldsByStrategy.LABEL,
 };
 
 export const warehouseSchema: WarehouseCatalog = {
@@ -960,4 +1228,390 @@ export const expectedModelWithType: DbtModelNode = {
     columns: {
         myColumnName: { ...column, data_type: DimensionType.STRING },
     },
+};
+
+export const LIGHTDASH_TABLE_SQL_WHERE: Omit<Table, 'lineageGraph'> = {
+    ...BASE_LIGHTDASH_TABLE,
+    sqlWhere: '${payment_method} IS NOT NULL',
+};
+
+export const MODEL_WITH_ADDITIONAL_DIMENSIONS: DbtModelNode & {
+    relation_name: string;
+} = {
+    ...model,
+    columns: {
+        metadata: {
+            name: 'metadata',
+            data_type: DimensionType.STRING,
+            meta: {
+                dimension: {
+                    hidden: true,
+                },
+                additional_dimensions: {
+                    version: {
+                        type: DimensionType.NUMBER,
+                        sql: "${metadata}-->'version'",
+                    },
+                    created_at: {
+                        type: DimensionType.TIMESTAMP,
+                        sql: "${metadata}-->'created_at'",
+                    },
+                },
+            },
+        },
+    },
+};
+
+export const LIGHTDASH_TABLE_WITH_ADDITIONAL_DIMENSIONS: Omit<
+    Table,
+    'lineageGraph'
+> = {
+    ...BASE_LIGHTDASH_TABLE,
+    dimensions: {
+        metadata: {
+            fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
+            description: undefined,
+            type: DimensionType.STRING,
+            sql: '${TABLE}.metadata',
+            name: 'metadata',
+            label: 'Metadata',
+            table: BASE_LIGHTDASH_TABLE.name,
+            tableLabel: 'My table',
+            source: undefined,
+            timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
+            hidden: true,
+            format: undefined,
+            round: undefined,
+            compact: undefined,
+            groups: [],
+            colors: undefined,
+            index: 0,
+            isIntervalBase: false,
+        },
+        version: {
+            fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
+            description: undefined,
+            type: DimensionType.NUMBER,
+            sql: "${metadata}-->'version'",
+            name: 'version',
+            label: 'Version',
+            table: BASE_LIGHTDASH_TABLE.name,
+            tableLabel: 'My table',
+            source: undefined,
+            timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
+            hidden: false,
+            format: undefined,
+            round: undefined,
+            compact: undefined,
+            groups: [],
+            colors: undefined,
+            index: 0,
+            isAdditionalDimension: true,
+            isIntervalBase: false,
+        },
+        created_at: {
+            fieldType: FieldType.DIMENSION,
+            requiredAttributes: undefined,
+            description: undefined,
+            type: DimensionType.TIMESTAMP,
+            sql: "${metadata}-->'created_at'",
+            name: 'created_at',
+            label: 'Created at',
+            table: BASE_LIGHTDASH_TABLE.name,
+            tableLabel: 'My table',
+            source: undefined,
+            timeInterval: undefined,
+            timeIntervalBaseDimensionName: undefined,
+            hidden: false,
+            format: undefined,
+            round: undefined,
+            compact: undefined,
+            groups: [],
+            colors: undefined,
+            index: 0,
+            isAdditionalDimension: true,
+            isIntervalBase: true,
+        },
+        created_at_day: {
+            colors: undefined,
+            compact: undefined,
+            description: undefined,
+            fieldType: FieldType.DIMENSION,
+            format: undefined,
+            groups: ['Created at'],
+            hidden: true,
+            index: 0,
+            isAdditionalDimension: true,
+            isIntervalBase: false,
+            label: 'Created at day',
+            name: 'created_at_day',
+            requiredAttributes: undefined,
+            round: undefined,
+            source: undefined,
+            sql: "DATE_TRUNC('DAY', ${metadata}-->'created_at')",
+            table: 'myTable',
+            tableLabel: 'My table',
+            timeInterval: TimeFrames.DAY,
+            timeIntervalBaseDimensionName: 'created_at',
+            type: DimensionType.DATE,
+        },
+        created_at_month: {
+            colors: undefined,
+            compact: undefined,
+            description: undefined,
+            fieldType: FieldType.DIMENSION,
+            format: undefined,
+            groups: ['Created at'],
+            hidden: true,
+            index: 0,
+            isAdditionalDimension: true,
+            isIntervalBase: false,
+            label: 'Created at month',
+            name: 'created_at_month',
+            requiredAttributes: undefined,
+            round: undefined,
+            source: undefined,
+            sql: "DATE_TRUNC('MONTH', ${metadata}-->'created_at')",
+            table: 'myTable',
+            tableLabel: 'My table',
+            timeInterval: TimeFrames.MONTH,
+            timeIntervalBaseDimensionName: 'created_at',
+            type: DimensionType.DATE,
+        },
+        created_at_quarter: {
+            colors: undefined,
+            compact: undefined,
+            description: undefined,
+            fieldType: FieldType.DIMENSION,
+            format: undefined,
+            groups: ['Created at'],
+            hidden: true,
+            index: 0,
+            isAdditionalDimension: true,
+            isIntervalBase: false,
+            label: 'Created at quarter',
+            name: 'created_at_quarter',
+            requiredAttributes: undefined,
+            round: undefined,
+            source: undefined,
+            sql: "DATE_TRUNC('QUARTER', ${metadata}-->'created_at')",
+            table: 'myTable',
+            tableLabel: 'My table',
+            timeInterval: TimeFrames.QUARTER,
+            timeIntervalBaseDimensionName: 'created_at',
+            type: DimensionType.DATE,
+        },
+        created_at_raw: {
+            colors: undefined,
+            compact: undefined,
+            description: undefined,
+            fieldType: FieldType.DIMENSION,
+            format: undefined,
+            groups: ['Created at'],
+            hidden: true,
+            index: 0,
+            isAdditionalDimension: true,
+            isIntervalBase: false,
+            label: 'Created at raw',
+            name: 'created_at_raw',
+            requiredAttributes: undefined,
+            round: undefined,
+            source: undefined,
+            sql: "${metadata}-->'created_at'",
+            table: 'myTable',
+            tableLabel: 'My table',
+            timeInterval: TimeFrames.RAW,
+            timeIntervalBaseDimensionName: 'created_at',
+            type: DimensionType.TIMESTAMP,
+        },
+        created_at_week: {
+            colors: undefined,
+            compact: undefined,
+            description: undefined,
+            fieldType: FieldType.DIMENSION,
+            format: undefined,
+            groups: ['Created at'],
+            hidden: true,
+            index: 0,
+            isAdditionalDimension: true,
+            isIntervalBase: false,
+            label: 'Created at week',
+            name: 'created_at_week',
+            requiredAttributes: undefined,
+            round: undefined,
+            source: undefined,
+            sql: "DATE_TRUNC('WEEK', ${metadata}-->'created_at')",
+            table: 'myTable',
+            tableLabel: 'My table',
+            timeInterval: TimeFrames.WEEK,
+            timeIntervalBaseDimensionName: 'created_at',
+            type: DimensionType.DATE,
+        },
+        created_at_year: {
+            colors: undefined,
+            compact: undefined,
+            description: undefined,
+            fieldType: FieldType.DIMENSION,
+            format: undefined,
+            groups: ['Created at'],
+            hidden: true,
+            index: 0,
+            isAdditionalDimension: true,
+            isIntervalBase: false,
+            label: 'Created at year',
+            name: 'created_at_year',
+            requiredAttributes: undefined,
+            round: undefined,
+            source: undefined,
+            sql: "DATE_TRUNC('YEAR', ${metadata}-->'created_at')",
+            table: 'myTable',
+            tableLabel: 'My table',
+            timeInterval: TimeFrames.YEAR,
+            timeIntervalBaseDimensionName: 'created_at',
+            type: DimensionType.DATE,
+        },
+    },
+};
+
+export const SPOTLIGHT_CONFIG_WITH_CATEGORIES_AND_HIDE: LightdashProjectConfig =
+    {
+        spotlight: {
+            default_visibility: 'show',
+            categories: {
+                category_1: { label: 'Category 1' },
+                category_2: { label: 'Category 2', color: 'red' },
+            },
+        },
+    };
+
+export const MODEL_WITH_NO_CATEGORIES: DbtModelNode = {
+    ...MODEL_WITH_METRIC,
+    meta: {
+        spotlight: {
+            visibility: 'hide',
+        },
+    },
+};
+
+export const LIGHTDASH_TABLE_WITH_NO_CATEGORIES: Omit<Table, 'lineageGraph'> = {
+    ...LIGHTDASH_TABLE_WITH_METRICS,
+    metrics: {
+        ...{
+            dbt_metric_1: {
+                ...LIGHTDASH_TABLE_WITH_DBT_METRICS.metrics.dbt_metric_1,
+                spotlight: {
+                    ...LIGHTDASH_TABLE_WITH_DBT_METRICS.metrics.dbt_metric_1
+                        .spotlight,
+                    visibility: 'hide',
+                },
+            },
+        },
+        ...Object.fromEntries(
+            Object.entries(LIGHTDASH_TABLE_WITH_METRICS.metrics).map(
+                ([key, metric]) => [
+                    key,
+                    {
+                        ...metric,
+                        spotlight: { ...metric.spotlight, visibility: 'hide' },
+                        index: (metric.index ?? 0) + 1,
+                    },
+                ],
+            ),
+        ),
+    },
+    dimensions: LIGHTDASH_TABLE_WITH_METRICS.dimensions,
+};
+
+export const MODEL_WITH_MODEL_LEVEL_CATEGORIES: DbtModelNode = {
+    ...MODEL_WITH_METRIC,
+    meta: {
+        spotlight: {
+            visibility: 'hide',
+            categories: ['category_1'],
+        },
+    },
+};
+
+export const LIGHTDASH_TABLE_WITH_MODEL_LEVEL_CATEGORIES: Omit<
+    Table,
+    'lineageGraph'
+> = {
+    ...LIGHTDASH_TABLE_WITH_NO_CATEGORIES,
+    metrics: Object.fromEntries(
+        Object.entries(LIGHTDASH_TABLE_WITH_NO_CATEGORIES.metrics).map(
+            ([key, metric]) => [
+                key,
+                {
+                    ...metric,
+                    spotlight: {
+                        visibility: 'hide',
+                        categories: ['category_1'],
+                    },
+                },
+            ],
+        ),
+    ),
+};
+
+export const MODEL_WITH_METRIC_LEVEL_CATEGORIES: DbtModelNode = {
+    ...MODEL_WITH_MODEL_LEVEL_CATEGORIES,
+    columns: {
+        user_id: {
+            name: 'user_id',
+            data_type: DimensionType.STRING,
+            meta: {
+                metrics: {
+                    user_count: {
+                        type: MetricType.COUNT_DISTINCT,
+                        spotlight: {
+                            visibility: 'hide',
+                            categories: ['category_2'],
+                        },
+                    },
+                },
+            },
+        },
+        num_participating_athletes: {
+            name: 'num_participating_athletes',
+            data_type: DimensionType.NUMBER,
+            meta: {
+                dimension: {
+                    sql: 'num_participating_men + num_participating_women',
+                },
+                metrics: {
+                    total_num_participating_athletes: {
+                        type: MetricType.SUM,
+                    },
+                },
+            },
+        },
+    },
+};
+
+export const LIGHTDASH_TABLE_WITH_METRIC_LEVEL_CATEGORIES: Omit<
+    Table,
+    'lineageGraph'
+> = {
+    ...LIGHTDASH_TABLE_WITH_MODEL_LEVEL_CATEGORIES,
+    metrics: Object.fromEntries(
+        Object.entries(LIGHTDASH_TABLE_WITH_MODEL_LEVEL_CATEGORIES.metrics).map(
+            ([key, metric]) => [
+                key,
+                {
+                    ...metric,
+                    spotlight: {
+                        visibility: 'hide',
+                        categories: [
+                            'category_1',
+                            ...(key === 'user_count' ? ['category_2'] : []),
+                        ],
+                    },
+                },
+            ],
+        ),
+    ),
 };

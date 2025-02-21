@@ -1,21 +1,23 @@
-import { MenuItem2 } from '@blueprintjs/popover2';
 import {
-    Field,
     getItemId,
-    SortField,
-    TableCalculation,
+    type CustomDimension,
+    type Field,
+    type SortField,
+    type TableCalculation,
 } from '@lightdash/common';
-import { FC } from 'react';
-import { useExplorerContext } from '../../../providers/ExplorerProvider';
+import { Menu, Text } from '@mantine/core';
+import { IconCheck } from '@tabler/icons-react';
+import { type FC } from 'react';
+import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
 import {
+    SortDirection,
     getSortDirectionOrder,
     getSortLabel,
-    SortDirection,
 } from '../../../utils/sortUtils';
-import { BolderLabel } from './ColumnHeaderContextMenu.styles';
+import MantineIcon from '../../common/MantineIcon';
 
 type Props = {
-    item: Field | TableCalculation;
+    item: Field | TableCalculation | CustomDimension;
     sort: SortField | undefined;
 };
 
@@ -37,21 +39,19 @@ const ColumnHeaderSortMenuOptions: FC<Props> = ({ item, sort }) => {
 
     return (
         <>
+            <Menu.Label>Sorting</Menu.Label>
             {item &&
                 getSortDirectionOrder(item).map((sortDirection) => (
-                    <MenuItem2
+                    <Menu.Item
                         key={sortDirection}
-                        roleStructure="listoption"
-                        selected={
-                            hasSort && selectedSortDirection === sortDirection
+                        icon={
+                            hasSort &&
+                            selectedSortDirection === sortDirection ? (
+                                <MantineIcon icon={IconCheck} />
+                            ) : undefined
                         }
-                        text={
-                            <>
-                                Sort{' '}
-                                <BolderLabel>
-                                    {getSortLabel(item, sortDirection)}
-                                </BolderLabel>
-                            </>
+                        disabled={
+                            hasSort && selectedSortDirection === sortDirection
                         }
                         onClick={() =>
                             hasSort && selectedSortDirection === sortDirection
@@ -61,7 +61,12 @@ const ColumnHeaderSortMenuOptions: FC<Props> = ({ item, sort }) => {
                                           sortDirection === SortDirection.DESC,
                                   })
                         }
-                    />
+                    >
+                        Sort{' '}
+                        <Text span fw={500}>
+                            {getSortLabel(item, sortDirection)}
+                        </Text>
+                    </Menu.Item>
                 ))}
         </>
     );

@@ -1,18 +1,20 @@
+import { type SavedChart } from '@lightdash/common';
 import {
     Button,
-    Dialog,
-    DialogBody,
-    DialogFooter,
-    DialogProps,
-} from '@blueprintjs/core';
-import { SavedChart } from '@lightdash/common';
-import { FC } from 'react';
-import { useForm } from 'react-hook-form';
+    Group,
+    Modal,
+    Stack,
+    TextInput,
+    Textarea,
+    Title,
+    type ModalProps,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { useEffect, type FC } from 'react';
 import { useSavedQuery, useUpdateMutation } from '../../../hooks/useSavedQuery';
-import Form from '../../ReactHookForm/Form';
-import Input from '../../ReactHookForm/Input';
+import useSearchParams from '../../../hooks/useSearchParams';
 
-interface ChartUpdateModalProps extends DialogProps {
+interface ChartUpdateModalProps extends ModalProps {
     uuid: string;
     onConfirm?: () => void;
 }
@@ -24,69 +26,79 @@ const ChartUpdateModal: FC<ChartUpdateModalProps> = ({
     onConfirm,
     ...modalProps
 }) => {
-    const { data: chart, isLoading } = useSavedQuery({ id: uuid });
-    const { mutateAsync, isLoading: isUpdating } = useUpdateMutation(uuid);
+    const dashboardUuid = useSearchParams('fromDashboard');
+    const { data: chart, isInitialLoading } = useSavedQuery({ id: uuid });
+    const { mutateAsync, isLoading: isUpdating } = useUpdateMutation(
+        dashboardUuid ? dashboardUuid : undefined,
+        uuid,
+    );
 
     const form = useForm<FormState>({
-        mode: 'onChange',
-        defaultValues: {
-            name: chart?.name,
-            description: chart?.description,
+        initialValues: {
+            name: '',
+            description: '',
         },
     });
 
-    if (isLoading || !chart) {
+    const { setValues } = form;
+
+    useEffect(() => {
+        if (!chart) return;
+        setValues({
+            name: chart.name,
+            description: chart.description,
+        });
+    }, [chart, setValues]);
+
+    if (isInitialLoading || !chart) {
         return null;
     }
 
-    const handleConfirm = async (data: FormState) => {
+    const handleConfirm = form.onSubmit(async (data) => {
         await mutateAsync({
             name: data.name,
             description: data.description,
         });
         onConfirm?.();
-    };
+    });
 
     return (
-        <Dialog lazy title="Update Chart" icon="chart" {...modalProps}>
-            <Form title="Update Chart" methods={form} onSubmit={handleConfirm}>
-                <DialogBody>
-                    <Input
-                        label="Enter a memorable name for your chart"
-                        name="name"
+        <Modal title={<Title order={4}>Update Chart</Title>} {...modalProps}>
+            <form title="Update Chart" onSubmit={handleConfirm}>
+                <Stack spacing="lg" pt="sm">
+                    <TextInput
+                        label="Chart name"
+                        required
                         placeholder="eg. How many weekly active users do we have?"
                         disabled={isUpdating}
-                        rules={{ required: 'Name field is required' }}
-                        defaultValue={chart.name || ''}
+                        {...form.getInputProps('name')}
                     />
 
-                    <Input
+                    <Textarea
                         label="Chart description"
-                        name="description"
                         placeholder="A few words to give your team some context"
                         disabled={isUpdating}
-                        defaultValue={chart.description || ''}
+                        autosize
+                        maxRows={3}
+                        {...form.getInputProps('description')}
                     />
-                </DialogBody>
 
-                <DialogFooter
-                    actions={
-                        <>
-                            <Button onClick={modalProps.onClose}>Cancel</Button>
+                    <Group position="right" mt="sm">
+                        <Button variant="outline" onClick={modalProps.onClose}>
+                            Cancel
+                        </Button>
 
-                            <Button
-                                disabled={!form.formState.isValid}
-                                loading={isUpdating}
-                                intent="primary"
-                                type="submit"
-                            >
-                                Save
-                            </Button>
-                        </>
-                    }
-                />
-            </Form>
-        </Dialog>
+                        <Button
+                            disabled={!form.isValid()}
+                            loading={isUpdating}
+                            type="submit"
+                        >
+                            Save
+                        </Button>
+                    </Group>
+                </Stack>
+            </form>
+        </Modal>
     );
 };
 

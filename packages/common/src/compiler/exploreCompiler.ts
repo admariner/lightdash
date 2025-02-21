@@ -1,24 +1,42 @@
-import { SupportedDbtAdapter } from '../types/dbt';
+import { type DbtRawModelNode, type SupportedDbtAdapter } from '../types/dbt';
 import { CompileError } from '../types/errors';
 import {
-    CompiledExploreJoin,
-    CompiledTable,
-    Explore,
-    ExploreJoin,
-    Table,
+    type CompiledExploreJoin,
+    type CompiledTable,
+    type Explore,
+    type ExploreJoin,
+    type Table,
 } from '../types/explore';
 import {
-    CompiledDimension,
-    CompiledMetric,
-    Dimension,
     friendlyName,
+    isCustomBinDimension,
     isNonAggregateMetric,
-    Metric,
+    type CompiledCustomDimension,
+    type CompiledCustomSqlDimension,
+    type CompiledDimension,
+    type CompiledMetric,
+    type CustomDimension,
+    type CustomSqlDimension,
+    type Dimension,
+    type Metric,
 } from '../types/field';
-import { WarehouseClient } from '../types/warehouse';
+import { type LightdashProjectConfig } from '../types/lightdashProjectConfig';
+import {
+    dateGranularityToTimeFrameMap,
+    type DateGranularity,
+} from '../types/timeFrames';
+import { type WarehouseClient } from '../types/warehouse';
+import { timeFrameConfigs } from '../utils/timeFrames';
+import { getFieldQuoteChar } from '../utils/warehouse';
 import { renderFilterRuleSql } from './filtersCompiler';
+import {
+    getCategoriesFromResource,
+    getSpotlightConfigurationForResource,
+} from './lightdashProjectConfig';
 
-export const lightdashVariablePattern = /\$\{([a-zA-Z0-9_.]+)\}/g;
+// exclude lightdash prefix from variable pattern
+export const lightdashVariablePattern =
+    /\$\{((?!(lightdash|ld)\.)[a-zA-Z0-9_.]+)\}/g;
 
 type Reference = {
     refTable: string;
@@ -39,24 +57,47 @@ const getParsedReference = (ref: string, currentTable: string): Reference => {
     return { refTable, refName };
 };
 
+export const getAllReferences = (raw: string): string[] =>
+    (raw.match(lightdashVariablePattern) || []).map(
+        (value) => value.slice(2, value.length - 1), // value without brackets
+    );
+
 export const parseAllReferences = (
     raw: string,
     currentTable: string,
 ): Reference[] =>
-    (raw.match(lightdashVariablePattern) || []).map((value) =>
-        getParsedReference(value.slice(2), currentTable),
-    );
+    getAllReferences(raw).map((ref) => getParsedReference(ref, currentTable));
 
 export type UncompiledExplore = {
     name: string;
     label: string;
     tags: string[];
     baseTable: string;
+    groupLabel?: string;
     joinedTables: ExploreJoin[];
     tables: Record<string, Table>;
     targetDatabase: SupportedDbtAdapter;
+    sqlWhere?: string;
+    warehouse?: string;
+    ymlPath?: string;
+    sqlPath?: string;
+    joinAliases?: Record<string, Record<string, string>>;
+    spotlightConfig?: LightdashProjectConfig['spotlight'];
+    meta: DbtRawModelNode['meta'];
+    databricksCompute?: string;
 };
 
+const getReferencedTable = (
+    refTable: string,
+    tables: Record<string, Table>,
+) => {
+    if (tables[refTable]) {
+        return tables[refTable];
+    }
+    return Object.values(tables).find(
+        (table) => table.name === refTable || table.originalName === refTable,
+    );
+};
 export class ExploreCompiler {
     private readonly warehouseClient: WarehouseClient;
 
@@ -72,6 +113,13 @@ export class ExploreCompiler {
         joinedTables,
         tables,
         targetDatabase,
+        groupLabel,
+        warehouse,
+        ymlPath,
+        sqlPath,
+        spotlightConfig,
+        meta,
+        databricksCompute,
     }: UncompiledExplore): Explore {
         // Check that base table and joined tables exist
         if (!tables[baseTable]) {
@@ -105,31 +153,64 @@ export class ExploreCompiler {
                     join.label ||
                     (join.alias && friendlyName(join.alias)) ||
                     tables[join.table].label;
+
+                const requiredDimensionsForJoin = parseAllReferences(
+                    join.sqlOn,
+                    join.table,
+                ).reduce<string[]>((acc, reference) => {
+                    if (reference.refTable === joinTableName) {
+                        acc.push(reference.refName);
+                    }
+                    return acc;
+                }, []);
+
+                const tableDimensions = tables[join.table].dimensions;
                 return {
                     ...prev,
                     [join.alias || join.table]: {
                         ...tables[join.table],
+                        originalName: tables[join.table].name,
                         name: joinTableName,
                         label: joinTableLabel,
-                        dimensions: Object.keys(tables[join.table].dimensions)
-                            .filter(
-                                (d) =>
-                                    join.fields === undefined ||
-                                    join.fields.includes(d),
-                            )
-                            .reduce<Record<string, Dimension>>(
-                                (prevDimensions, dimensionKey) => ({
-                                    ...prevDimensions,
-                                    [dimensionKey]: {
-                                        ...tables[join.table].dimensions[
-                                            dimensionKey
-                                        ],
-                                        table: joinTableName,
-                                        tableLabel: joinTableLabel,
-                                    },
-                                }),
-                                {},
-                            ),
+                        hidden: join.hidden,
+                        dimensions: Object.keys(tableDimensions).reduce<
+                            Record<string, Dimension>
+                        >((acc, dimensionKey) => {
+                            const dimension = tableDimensions[dimensionKey];
+                            const isRequired =
+                                requiredDimensionsForJoin.includes(
+                                    dimensionKey,
+                                );
+
+                            const isTimeIntervalBaseDimensionVisible =
+                                dimension.timeInterval &&
+                                dimension.timeIntervalBaseDimensionName &&
+                                join.fields
+                                    ? join.fields.includes(
+                                          dimension.timeIntervalBaseDimensionName,
+                                      )
+                                    : false;
+
+                            const isVisible =
+                                join.fields === undefined ||
+                                join.fields.includes(dimensionKey) ||
+                                (dimension.group !== undefined &&
+                                    join.fields.includes(dimension.group)) ||
+                                isTimeIntervalBaseDimensionVisible;
+
+                            if (isRequired || isVisible) {
+                                acc[dimensionKey] = {
+                                    ...dimension,
+                                    hidden:
+                                        join.hidden ||
+                                        dimension.hidden ||
+                                        !isVisible,
+                                    table: joinTableName,
+                                    tableLabel: joinTableLabel,
+                                };
+                            }
+                            return acc;
+                        }, {}),
                         metrics: Object.keys(tables[join.table].metrics)
                             .filter(
                                 (d) =>
@@ -137,16 +218,20 @@ export class ExploreCompiler {
                                     join.fields.includes(d),
                             )
                             .reduce<Record<string, Metric>>(
-                                (prevMetrics, metricKey) => ({
-                                    ...prevMetrics,
-                                    [metricKey]: {
-                                        ...tables[join.table].metrics[
-                                            metricKey
-                                        ],
-                                        table: joinTableName,
-                                        tableLabel: joinTableLabel,
-                                    },
-                                }),
+                                (prevMetrics, metricKey) => {
+                                    const metric =
+                                        tables[join.table].metrics[metricKey];
+                                    return {
+                                        ...prevMetrics,
+                                        [metricKey]: {
+                                            ...metric,
+                                            hidden:
+                                                !!join.hidden || metric.hidden,
+                                            table: joinTableName,
+                                            tableLabel: joinTableLabel,
+                                        },
+                                    };
+                                },
                                 {},
                             ),
                     },
@@ -165,9 +250,21 @@ export class ExploreCompiler {
             }),
             {},
         );
+
         const compiledJoins: CompiledExploreJoin[] = joinedTables.map((j) =>
             this.compileJoin(j, includedTables),
         );
+
+        const spotlightVisibility =
+            meta.spotlight?.visibility ?? spotlightConfig?.default_visibility;
+
+        const spotlightCategories = getCategoriesFromResource(
+            'explore',
+            name,
+            spotlightConfig,
+            meta.spotlight?.categories,
+        );
+
         return {
             name,
             label,
@@ -176,6 +273,15 @@ export class ExploreCompiler {
             joinedTables: compiledJoins,
             tables: compiledTables,
             targetDatabase,
+            groupLabel,
+            warehouse,
+            ymlPath,
+            sqlPath,
+            databricksCompute,
+            ...getSpotlightConfigurationForResource(
+                spotlightVisibility,
+                spotlightCategories,
+            ),
         };
     }
 
@@ -204,8 +310,24 @@ export class ExploreCompiler {
             }),
             {},
         );
+
+        const compiledSqlWhere = table.sqlWhere?.replace(
+            lightdashVariablePattern,
+            (_, p1) => {
+                const compiledReference = this.compileDimensionReference(
+                    p1,
+                    tables,
+                    table.name,
+                );
+
+                return compiledReference.sql;
+            },
+        );
+
         return {
             ...table,
+            uncompiledSqlWhere: table.sqlWhere,
+            sqlWhere: compiledSqlWhere,
             dimensions,
             metrics,
         };
@@ -221,17 +343,33 @@ export class ExploreCompiler {
                 dimReference,
                 metric.table,
             );
-            const isValidReference = !!tables[refTable]?.dimensions[refName];
+            const referencedTable = getReferencedTable(refTable, tables);
+            const isValidReference = !!referencedTable?.dimensions[refName];
             if (!isValidReference) {
                 throw new CompileError(
-                    `"show_underlying_values" for metric "${metric.name}" has a reference to an unknown dimension: ${dimReference}`,
+                    `"show_underlying_values" for metric "${metric.name}" has a reference to an unknown dimension: ${dimReference} in table "${metric.table}"`,
                 );
             }
         });
+        const tablesRequiredAttributes = Array.from(
+            compiledMetric.tablesReferences,
+        ).reduce<Record<string, Record<string, string | string[]>>>(
+            (acc, tableReference) => {
+                const table = tables[tableReference] as Table | undefined;
+                if (table?.requiredAttributes) {
+                    acc[tableReference] = table.requiredAttributes;
+                }
+                return acc;
+            },
+            {},
+        );
         return {
             ...metric,
             compiledSql: compiledMetric.sql,
             tablesReferences: Array.from(compiledMetric.tablesReferences),
+            ...(Object.keys(tablesRequiredAttributes).length
+                ? { tablesRequiredAttributes }
+                : {}),
         };
     }
 
@@ -270,15 +408,41 @@ export class ExploreCompiler {
             },
         );
         if (metric.filters !== undefined && metric.filters.length > 0) {
+            if (isNonAggregateMetric(metric)) {
+                throw new CompileError(
+                    `Error: ${metric.name} - metric filters cannot be used with non-aggregate metrics`,
+                );
+            }
+
             const conditions = metric.filters.map((filter) => {
+                const fieldRef =
+                    // @ts-expect-error This fallback is to support old metric filters in yml. We can delete this after a few months since we can assume all projects have been redeployed
+                    filter.target.fieldRef || filter.target.fieldId;
                 const { refTable, refName } = getParsedReference(
-                    filter.target.fieldId,
+                    fieldRef,
                     metric.table,
                 );
-                const dimensionField = tables[refTable]?.dimensions[refName];
+
+                const table = tables[refTable];
+
+                if (!table) {
+                    throw new CompileError(
+                        `Filter for metric "${metric.name}" has a reference to an unknown table`,
+                    );
+                }
+
+                // NOTE: date dimensions from explores have their time format uppercased (e.g. order_date_DAY) - see ticket: https://github.com/lightdash/lightdash/issues/5998
+                const dimensionRefName = Object.keys(table.dimensions).find(
+                    (key) => key.toLowerCase() === refName.toLowerCase(),
+                );
+
+                const dimensionField = dimensionRefName
+                    ? table.dimensions[dimensionRefName]
+                    : undefined;
+
                 if (!dimensionField) {
                     throw new CompileError(
-                        `Filter for metric "${metric.name}" has a reference to an unknown dimension: ${filter.target.fieldId}`,
+                        `Filter for metric "${metric.name}" has a reference to an unknown dimension: ${fieldRef}`,
                     );
                 }
                 const compiledDimension = this.compileDimension(
@@ -294,10 +458,11 @@ export class ExploreCompiler {
                 return renderFilterRuleSql(
                     filter,
                     compiledDimension,
-                    this.warehouseClient.getFieldQuoteChar(),
+                    getFieldQuoteChar(this.warehouseClient.credentials.type),
                     this.warehouseClient.getStringQuoteChar(),
                     this.warehouseClient.getEscapeStringQuoteChar(),
                     this.warehouseClient.getStartOfWeek(),
+                    this.warehouseClient.getAdapterType(),
                 );
             });
             renderedSql = `CASE WHEN (${conditions.join(
@@ -317,10 +482,25 @@ export class ExploreCompiler {
         tables: Record<string, Table>,
     ): CompiledDimension {
         const compiledDimension = this.compileDimensionSql(dimension, tables);
+        const tablesRequiredAttributes = Array.from(
+            compiledDimension.tablesReferences,
+        ).reduce<Record<string, Record<string, string | string[]>>>(
+            (acc, tableReference) => {
+                const table = tables[tableReference] as Table | undefined;
+                if (table?.requiredAttributes) {
+                    acc[tableReference] = table.requiredAttributes;
+                }
+                return acc;
+            },
+            {},
+        );
         return {
             ...dimension,
             compiledSql: compiledDimension.sql,
             tablesReferences: Array.from(compiledDimension.tablesReferences),
+            ...(Object.keys(tablesRequiredAttributes).length
+                ? { tablesRequiredAttributes }
+                : {}),
         };
     }
 
@@ -329,7 +509,7 @@ export class ExploreCompiler {
         tables: Record<string, Table>,
     ): { sql: string; tablesReferences: Set<string> } {
         // Dimension might have references to other dimensions
-        // Check we don't reference ourself
+        // Check we don't reference yourself
         const currentRef = `${dimension.table}.${dimension.name}`;
         const currentShortRef = dimension.name;
         let tablesReferences = new Set([dimension.table]);
@@ -355,6 +535,59 @@ export class ExploreCompiler {
         return { sql, tablesReferences };
     }
 
+    compileCustomDimensionSql(
+        dimension: CustomSqlDimension,
+        tables: Record<string, Table>,
+    ): Pick<CompiledCustomSqlDimension, 'compiledSql' | 'tablesReferences'> {
+        const currentRef = dimension.id;
+        let tablesReferences = new Set<string>([]);
+        const compiledSql = dimension.sql.replace(
+            lightdashVariablePattern,
+            (_, p1) => {
+                if (currentRef === p1) {
+                    throw new CompileError(
+                        `Dimension "${dimension.name}" in table "${dimension.table}" has a sql string referencing itself: "${dimension.sql}"`,
+                        {},
+                    );
+                }
+
+                const compiledReference = this.compileDimensionReference(
+                    p1,
+                    tables,
+                    dimension.table,
+                );
+                tablesReferences = new Set([
+                    ...tablesReferences,
+                    ...compiledReference.tablesReferences,
+                ]);
+                return compiledReference.sql;
+            },
+        );
+        return {
+            compiledSql,
+            tablesReferences: Array.from(tablesReferences),
+        };
+    }
+
+    compileCustomDimension(
+        customDimension: CustomDimension,
+        tables: Record<string, Table>,
+    ): CompiledCustomDimension {
+        if (isCustomBinDimension(customDimension)) {
+            return customDimension;
+        }
+
+        const compiledCustomDimensionSql = this.compileCustomDimensionSql(
+            customDimension,
+            tables,
+        );
+
+        return {
+            ...customDimension,
+            ...compiledCustomDimensionSql,
+        };
+    }
+
     compileDimensionReference(
         ref: string,
         tables: Record<string, Table>,
@@ -362,7 +595,9 @@ export class ExploreCompiler {
     ): { sql: string; tablesReferences: Set<string> } {
         // Reference to current table
         if (ref === 'TABLE') {
-            const fieldQuoteChar = this.warehouseClient.getFieldQuoteChar();
+            const fieldQuoteChar = getFieldQuoteChar(
+                this.warehouseClient.credentials.type,
+            );
             return {
                 sql: `${fieldQuoteChar}${currentTable}${fieldQuoteChar}`,
                 tablesReferences: new Set([currentTable]),
@@ -370,7 +605,11 @@ export class ExploreCompiler {
         }
         const { refTable, refName } = getParsedReference(ref, currentTable);
 
-        const referencedDimension = tables[refTable]?.dimensions[refName];
+        /** Resolve the table reference through its original name, or via an alias: */
+        const referencedTable = getReferencedTable(refTable, tables);
+
+        const referencedDimension = referencedTable?.dimensions[refName];
+
         if (referencedDimension === undefined) {
             throw new CompileError(
                 `Model "${currentTable}" has a dimension reference: \${${ref}} which matches no dimension`,
@@ -385,7 +624,7 @@ export class ExploreCompiler {
         return {
             sql: `(${compiledDimension.sql})`,
             tablesReferences: new Set([
-                refTable,
+                referencedTable?.name || refTable,
                 ...compiledDimension.tablesReferences,
             ]),
         };
@@ -398,15 +637,23 @@ export class ExploreCompiler {
     ): { sql: string; tablesReferences: Set<string> } {
         // Reference to current table
         if (ref === 'TABLE') {
-            const fieldQuoteChar = this.warehouseClient.getFieldQuoteChar();
+            const fieldQuoteChar = getFieldQuoteChar(
+                this.warehouseClient.credentials.type,
+            );
             return {
                 sql: `${fieldQuoteChar}${currentTable}${fieldQuoteChar}`,
                 tablesReferences: new Set([currentTable]),
             };
         }
-        const { refTable, refName } = getParsedReference(ref, currentTable);
 
-        const referencedMetric = tables[refTable]?.metrics[refName];
+        const { refTable: refTableName, refName } = getParsedReference(
+            ref,
+            currentTable,
+        );
+
+        const referencedTable = getReferencedTable(refTableName, tables);
+        const referencedMetric = referencedTable?.metrics[refName];
+
         if (referencedMetric === undefined) {
             throw new CompileError(
                 `Model "${currentTable}" has a metric reference: \${${ref}} which matches no metric`,
@@ -419,7 +666,7 @@ export class ExploreCompiler {
         return {
             sql: `(${compiledMetric.sql})`,
             tablesReferences: new Set([
-                refTable,
+                referencedTable?.name || refTableName,
                 ...compiledMetric.tablesReferences,
             ]),
         };
@@ -430,11 +677,15 @@ export class ExploreCompiler {
         tables: Record<string, Table>,
     ): string {
         // Sql join contains references to dimensions
-        return join.sqlOn.replace(
-            lightdashVariablePattern,
-            (_, p1) =>
-                this.compileDimensionReference(p1, tables, join.table).sql,
-        );
+        return join.sqlOn.replace(lightdashVariablePattern, (_, p1) => {
+            const compiledReference = this.compileDimensionReference(
+                p1,
+                tables,
+                join.table,
+            );
+
+            return compiledReference.sql;
+        });
     }
 
     compileJoin(
@@ -444,10 +695,53 @@ export class ExploreCompiler {
         return {
             table: join.alias || join.table,
             sqlOn: join.sqlOn,
+            type: join.type,
             compiledSqlOn: this.compileExploreJoinSql(
-                { table: join.alias || join.table, sqlOn: join.sqlOn },
+                {
+                    table: join.alias || join.table,
+                    sqlOn: join.sqlOn,
+                    always: join.always,
+                },
                 tables,
             ),
+            hidden: join.hidden,
+            always: join.always,
         };
     }
 }
+
+export const createDimensionWithGranularity = (
+    dimensionName: string,
+    baseTimeDimension: CompiledDimension,
+    explore: Explore,
+    warehouseClient: WarehouseClient,
+    granularity: DateGranularity,
+) => {
+    const newTimeInterval = dateGranularityToTimeFrameMap[granularity];
+    const exploreCompiler = new ExploreCompiler(warehouseClient);
+    return exploreCompiler.compileDimension(
+        {
+            ...baseTimeDimension,
+            name: dimensionName,
+            type: timeFrameConfigs[newTimeInterval].getDimensionType(
+                baseTimeDimension.type,
+            ),
+            timeInterval: newTimeInterval,
+            label: `${baseTimeDimension.label} ${timeFrameConfigs[
+                newTimeInterval
+            ]
+                .getLabel()
+                .toLowerCase()}`,
+            sql: timeFrameConfigs[newTimeInterval].getSql(
+                warehouseClient.getAdapterType(),
+                newTimeInterval,
+                baseTimeDimension.sql,
+                timeFrameConfigs[newTimeInterval].getDimensionType(
+                    baseTimeDimension.type,
+                ),
+                warehouseClient.getStartOfWeek(),
+            ),
+        },
+        explore.tables,
+    );
+};

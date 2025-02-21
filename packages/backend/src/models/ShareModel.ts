@@ -1,17 +1,17 @@
-import { ShareUrl } from '@lightdash/common';
+import { NotFoundError, ShareUrl } from '@lightdash/common';
 import { Knex } from 'knex';
 import { DbOrganization } from '../database/entities/organizations';
 import { DbShareUrl, ShareTableName } from '../database/entities/share';
 import { DbUser } from '../database/entities/users';
 
-type Dependencies = {
+type ShareModelArguments = {
     database: Knex;
 };
 export class ShareModel {
     private database: Knex;
 
-    constructor(dependencies: Dependencies) {
-        this.database = dependencies.database;
+    constructor(args: ShareModelArguments) {
+        this.database = args.database;
     }
 
     async createSharedUrl(shareUrl: ShareUrl): Promise<ShareUrl> {
@@ -48,6 +48,9 @@ export class ShareModel {
             .where('nanoid', nanoid)
             .select<(DbShareUrl & DbUser & DbOrganization)[]>('*');
 
+        if (!row) {
+            throw new NotFoundError('Shared link does not exist');
+        }
         return {
             nanoid: row.nanoid,
             params: row.params,

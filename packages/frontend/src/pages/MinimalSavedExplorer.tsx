@@ -1,21 +1,27 @@
-import { FC } from 'react';
-import { useParams } from 'react-router-dom';
-import styled from 'styled-components';
+import { Box, MantineProvider, type MantineThemeOverride } from '@mantine/core';
+import { type FC } from 'react';
+import { useParams } from 'react-router';
 import LightdashVisualization from '../components/LightdashVisualization';
 import VisualizationProvider from '../components/LightdashVisualization/VisualizationProvider';
-import { useExplore } from '../hooks/useExplore';
+import { useDateZoomGranularitySearch } from '../hooks/useExplorerRoute';
+import { useQueryResults } from '../hooks/useQueryResults';
 import { useSavedQuery } from '../hooks/useSavedQuery';
-import {
-    ExplorerProvider,
-    ExplorerSection,
-    useExplorerContext,
-} from '../providers/ExplorerProvider';
+import useSearchParams from '../hooks/useSearchParams';
+import useApp from '../providers/App/useApp';
+import ExplorerProvider from '../providers/Explorer/ExplorerProvider';
+import { ExplorerSection } from '../providers/Explorer/types';
+import useExplorerContext from '../providers/Explorer/useExplorerContext';
 
-const StyledLightdashVisualization = styled(LightdashVisualization)`
-    min-height: inherit;
-`;
-
+const themeOverride: MantineThemeOverride = {
+    globalStyles: () => ({
+        'html, body': {
+            backgroundColor: 'white',
+        },
+    }),
+};
 const MinimalExplorer: FC = () => {
+    const { health } = useApp();
+
     const queryResults = useExplorerContext(
         (context) => context.queryResults.data,
     );
@@ -28,28 +34,31 @@ const MinimalExplorer: FC = () => {
         (context) => context.queryResults.isLoading,
     );
 
-    const { data: explore } = useExplore(savedChart?.tableName);
-
-    if (!savedChart) {
+    if (!savedChart || health.isInitialLoading || !health.data) {
         return null;
     }
 
     return (
         <VisualizationProvider
             minimal
-            initialChartConfig={savedChart.chartConfig}
-            chartType={savedChart.chartConfig.type}
+            chartConfig={savedChart.chartConfig}
             initialPivotDimensions={savedChart.pivotConfig?.columns}
-            explore={explore}
             resultsData={queryResults}
             isLoading={isLoadingQueryResults}
             columnOrder={savedChart.tableConfig.columnOrder}
+            pivotTableMaxColumnLimit={health.data.pivotTable.maxColumnLimit}
+            savedChartUuid={savedChart.uuid}
+            colorPalette={savedChart.colorPalette}
         >
-            <StyledLightdashVisualization
-                // get rid of the classNames once you remove analytics providers
-                className="sentry-block fs-block cohere-block"
-                data-testid="visualization"
-            />
+            <MantineProvider inherit theme={themeOverride}>
+                <Box mih="inherit" h="100%">
+                    <LightdashVisualization
+                        // get rid of the classNames once you remove analytics providers
+                        className="sentry-block ph-no-capture"
+                        data-testid="visualization"
+                    />
+                </Box>
+            </MantineProvider>
         </VisualizationProvider>
     );
 };
@@ -59,12 +68,22 @@ const MinimalSavedExplorer: FC = () => {
         savedQueryUuid: string;
         projectUuid: string;
     }>();
+    const context = useSearchParams('context') || undefined;
 
-    const { data, isLoading, isError, error } = useSavedQuery({
+    const { data, isInitialLoading, isError, error } = useSavedQuery({
         id: savedQueryUuid,
     });
 
-    if (isLoading) {
+    const dateZoomGranularity = useDateZoomGranularitySearch();
+
+    const queryResults = useQueryResults({
+        chartUuid: savedQueryUuid,
+        isViewOnly: true,
+        dateZoomGranularity,
+        context,
+    });
+
+    if (isInitialLoading) {
         return null;
     }
 
@@ -74,6 +93,7 @@ const MinimalSavedExplorer: FC = () => {
 
     return (
         <ExplorerProvider
+            queryResults={queryResults}
             savedChart={data}
             initialState={
                 data
@@ -87,11 +107,27 @@ const MinimalSavedExplorer: FC = () => {
                               tableConfig: data.tableConfig,
                               pivotConfig: data.pivotConfig,
                           },
+                          modals: {
+                              format: {
+                                  isOpen: false,
+                              },
+                              additionalMetric: {
+                                  isOpen: false,
+                              },
+                              customDimension: {
+                                  isOpen: false,
+                              },
+                              additionalMetricWriteBack: {
+                                  isOpen: false,
+                              },
+                          },
                       }
                     : undefined
             }
         >
-            <MinimalExplorer />
+            <MantineProvider inherit theme={themeOverride}>
+                <MinimalExplorer />
+            </MantineProvider>
         </ExplorerProvider>
     );
 };

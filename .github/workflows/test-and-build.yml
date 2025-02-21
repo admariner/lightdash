@@ -1,33 +1,43 @@
 name: Test
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
 
 jobs:
+    build:
+        runs-on: ubuntu-latest
 
-  build:
+        steps:
+            - uses: actions/checkout@v4
+            # Install packages
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'pnpm'
+                  cache-dependency-path: 'pnpm-lock.yaml'
+            - name: Install packages
+              run: pnpm install --frozen-lockfile --prefer-offline
+            - name: Run dangerjs
+              if: github.event_name == 'pull_request'
+              run: pnpm danger-ci-lint
+              env:
+                  GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
+            - name: Lint all packages
+              run: pnpm lint
+            - name: Check formatting all packages
+              run: pnpm format
+            - name: Check for unused exports
+              run: pnpm -F frontend unused-exports
 
-    runs-on: ubuntu-latest
+            - name: Build common
+              run: pnpm common-build
 
-    steps:
-    - uses: actions/checkout@v2
-    - name: Install modules
-      run: yarn
-      
-    - name: Lint all packages
-      run: yarn lint
-    - name: Check formatting all packages
-      run: yarn format
+            - name: Build warehouses
+              run: pnpm warehouses-build
 
-    - name: Build common
-      run: yarn common-build
-
-    - name: Build warehouses
-      run: yarn warehouses-build
-
-    - name: Test backend
-      run: yarn test
-
+            - name: Run unit tests
+              run: pnpm backend-build && pnpm test

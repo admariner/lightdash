@@ -1,4 +1,4 @@
-import { ParseError } from '@lightdash/common';
+import { getErrorMessage, ParseError } from '@lightdash/common';
 import { JSONSchemaType } from 'ajv';
 import { promises as fs } from 'fs';
 import { ajv } from '../../../ajv';
@@ -16,6 +16,7 @@ export type BigqueryServiceAccountTarget = {
     location?: string;
     maximum_bytes_billed?: number;
     timeout_seconds?: number;
+    execution_project?: string;
 };
 export const bigqueryServiceAccountSchema: JSONSchemaType<BigqueryServiceAccountTarget> =
     {
@@ -64,6 +65,10 @@ export const bigqueryServiceAccountSchema: JSONSchemaType<BigqueryServiceAccount
                 type: 'integer',
                 nullable: true,
             },
+            execution_project: {
+                type: 'string',
+                nullable: true,
+            },
         },
         required: ['type', 'project', 'dataset', 'method', 'keyfile'],
     };
@@ -81,9 +86,10 @@ export const getBigqueryCredentialsFromServiceAccount = async (
                 string,
                 string
             >;
-        } catch (e: any) {
+        } catch (e: unknown) {
+            const msg = getErrorMessage(e);
             throw new ParseError(
-                `Cannot read keyfile for bigquery target expect at: ${keyfilePath}:\n  ${e.message}`,
+                `Cannot read keyfile for bigquery target expect at: ${keyfilePath}:\n  ${msg}`,
             );
         }
     }
@@ -107,6 +113,7 @@ export type BigqueryServiceAccountJsonTarget = {
     location?: string;
     maximum_bytes_billed?: number;
     timeout_seconds?: number;
+    execution_project?: string;
 };
 export const bigqueryServiceAccountJsonSchema: JSONSchemaType<BigqueryServiceAccountJsonTarget> =
     {
@@ -155,6 +162,10 @@ export const bigqueryServiceAccountJsonSchema: JSONSchemaType<BigqueryServiceAcc
                 type: 'integer',
                 nullable: true,
             },
+            execution_project: {
+                type: 'string',
+                nullable: true,
+            },
         },
         required: ['type', 'project', 'dataset', 'method', 'keyfile_json'],
     };
@@ -166,7 +177,16 @@ export const getBigqueryCredentialsFromServiceAccountJson = async (
         bigqueryServiceAccountJsonSchema,
     );
     if (validate(target)) {
-        return target.keyfile_json as Record<string, string>;
+        return Object.entries(target.keyfile_json).reduce<
+            Record<string, string>
+        >((acc, [key, value]) => {
+            if (typeof value === 'string') {
+                acc[key] = value.replaceAll(/\\n/gm, '\n'); // replace escaped newlines. Prevents error: Error: error:1E08010C:DECODER routines::unsupported
+            } else {
+                acc[key] = value;
+            }
+            return acc;
+        }, {});
     }
     const lineErrorMessages = (validate.errors || [])
         .map((err) => `Field at ${err.instancePath} ${err.message}`)

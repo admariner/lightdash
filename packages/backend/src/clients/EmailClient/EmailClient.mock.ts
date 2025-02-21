@@ -10,10 +10,16 @@ export const passwordResetLinkMock = {
 
 export const lightdashConfigWithNoSMTP: Pick<
     LightdashConfig,
-    'smtp' | 'siteUrl'
+    'smtp' | 'siteUrl' | 'query'
 > = {
     smtp: undefined,
     siteUrl: 'https://test.lightdash.cloud',
+    query: {
+        maxLimit: 100,
+        defaultLimit: 500,
+        csvCellsLimit: 100,
+        timezone: undefined,
+    },
 };
 
 const smtpBase: SmtpConfig = {
@@ -34,17 +40,23 @@ const smtpBase: SmtpConfig = {
 
 export const lightdashConfigWithBasicSMTP: Pick<
     LightdashConfig,
-    'smtp' | 'siteUrl'
+    'smtp' | 'siteUrl' | 'query'
 > = {
     smtp: {
         ...smtpBase,
     },
     siteUrl: 'https://test.lightdash.cloud',
+    query: {
+        maxLimit: 100,
+        defaultLimit: 500,
+        csvCellsLimit: 100,
+        timezone: undefined,
+    },
 };
 
 export const lightdashConfigWithOauth2SMTP: Pick<
     LightdashConfig,
-    'smtp' | 'siteUrl'
+    'smtp' | 'siteUrl' | 'query'
 > = {
     smtp: {
         ...smtpBase,
@@ -55,17 +67,29 @@ export const lightdashConfigWithOauth2SMTP: Pick<
         },
     },
     siteUrl: 'https://test.lightdash.cloud',
+    query: {
+        maxLimit: 100,
+        defaultLimit: 500,
+        csvCellsLimit: 100,
+        timezone: undefined,
+    },
 };
 
 export const lightdashConfigWithSecurePortSMTP: Pick<
     LightdashConfig,
-    'smtp' | 'siteUrl'
+    'smtp' | 'siteUrl' | 'query'
 > = {
     smtp: {
         ...smtpBase,
         port: 465,
     },
     siteUrl: 'https://test.lightdash.cloud',
+    query: {
+        maxLimit: 100,
+        defaultLimit: 500,
+        csvCellsLimit: 100,
+        timezone: undefined,
+    },
 };
 
 export const expectedTransporterArgs = [

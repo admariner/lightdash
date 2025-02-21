@@ -1,63 +1,23 @@
-import { HotkeyConfig, useHotkeys } from '@blueprintjs/core';
-import { ConditionalFormattingConfig, ResultRow } from '@lightdash/common';
+import { type ResultRow, type ResultValue } from '@lightdash/common';
 import {
-    Cell,
-    ColumnOrderState,
     getCoreRowModel,
+    getExpandedRowModel,
     getPaginationRowModel,
-    Table,
     useReactTable,
+    type ColumnDefBase,
+    type ColumnOrderState,
+    type GroupingState,
 } from '@tanstack/react-table';
-import copy from 'copy-to-clipboard';
-import { debounce } from 'lodash-es';
-import React, {
-    createContext,
-    FC,
-    useCallback,
-    useContext,
-    useEffect,
-    useMemo,
-    useState,
-} from 'react';
-import useToaster from '../../../hooks/toaster/useToaster';
+import React, { useEffect, useMemo, useState, type FC } from 'react';
+import { formatCellContent } from '../../../hooks/useColumns';
 import {
-    CellContextMenuProps,
     DEFAULT_PAGE_SIZE,
-    HeaderProps,
     MAX_PAGE_SIZE,
     ROW_NUMBER_COLUMN_ID,
-    TableColumn,
-    TableHeader,
-} from './types';
-
-type Props = {
-    data: ResultRow[];
-    columns: Array<TableColumn | TableHeader>;
-    headerContextMenu?: FC<HeaderProps>;
-    cellContextMenu?: FC<CellContextMenuProps>;
-    pagination?: {
-        show?: boolean;
-        defaultScroll?: boolean;
-    };
-    hideRowNumbers?: boolean;
-    showColumnCalculation?: boolean;
-    conditionalFormattings?: ConditionalFormattingConfig[];
-    footer?: {
-        show?: boolean;
-    };
-    columnOrder?: string[];
-    onColumnOrderChange?: (value: string[]) => void;
-};
-
-export type TableContext = Props & {
-    table: Table<ResultRow>;
-    selectedCell: Cell<ResultRow, unknown> | undefined;
-    onSelectCell: (cell: Cell<ResultRow, unknown> | undefined) => void;
-    copyingCellId: string | undefined;
-    onCopyCell: React.KeyboardEventHandler<HTMLElement>;
-};
-
-const Context = createContext<TableContext | undefined>(undefined);
+} from './constants';
+import Context from './context';
+import { getGroupedRowModelLightdash } from './getGroupedRowModelLightdash';
+import { type ProviderProps, type TableColumn } from './types';
 
 const rowColumn: TableColumn = {
     id: ROW_NUMBER_COLUMN_ID,
@@ -67,17 +27,36 @@ const rowColumn: TableColumn = {
     meta: {
         width: 30,
     },
+    enableGrouping: false,
 };
 
-export const TableProvider: FC<Props> = ({
+const calculateColumnVisibility = (columns: ProviderProps['columns']) =>
+    columns.reduce(
+        (acc, c) => ({
+            ...acc,
+            ...(c.id && {
+                [c.id]:
+                    c.meta && 'isVisible' in c.meta ? c.meta?.isVisible : true,
+            }),
+        }),
+        {},
+    );
+
+export const TableProvider: FC<React.PropsWithChildren<ProviderProps>> = ({
     hideRowNumbers,
     showColumnCalculation,
+    showSubtotals,
     children,
     ...rest
 }) => {
-    const { showToastSuccess } = useToaster();
     const { data, columns, columnOrder, pagination } = rest;
+    const [grouping, setGrouping] = useState<GroupingState>([]);
     const [columnVisibility, setColumnVisibility] = useState({});
+
+    useEffect(() => {
+        setColumnVisibility(calculateColumnVisibility(columns));
+    }, [columns]);
+
     const [tempColumnOrder, setTempColumnOrder] = useState<ColumnOrderState>([
         ROW_NUMBER_COLUMN_ID,
         ...(columnOrder || []),
@@ -91,48 +70,76 @@ export const TableProvider: FC<Props> = ({
     const rowColumnWidth = hideRowNumbers
         ? 0
         : Math.max(withTotals, `${data.length}`.length * 10 + 20);
-    const frozenColumns = columns.filter((col) => col.meta?.frozen);
+    const frozenColumns = useMemo(
+        () => columns.filter((col) => col.meta?.frozen),
+        [columns],
+    );
     const frozenColumnWidth = 100; // TODO this should be dynamic
-    const stickyColumns = frozenColumns.map((col, i) => ({
-        ...col,
-        meta: {
-            ...col.meta,
-            className: `sticky-column ${
-                i === frozenColumns.length - 1 ? 'last-sticky-column' : ''
-            } ${hideRowNumbers ? 'first-sticky-column' : ''}`,
-            style: {
-                maxWidth: frozenColumnWidth,
-                minWidth: frozenColumnWidth,
-                left: rowColumnWidth + 1 + i * frozenColumnWidth,
+    const stickyColumns = useMemo(() => {
+        return frozenColumns.map((col, i) => ({
+            ...col,
+            meta: {
+                ...col.meta,
+                className: `sticky-column ${
+                    i === frozenColumns.length - 1 ? 'last-sticky-column' : ''
+                }`,
+                style: {
+                    maxWidth: frozenColumnWidth,
+                    minWidth: frozenColumnWidth,
+                    left: rowColumnWidth + 1 + i * frozenColumnWidth,
+                },
             },
-        },
-    }));
+        }));
+    }, [frozenColumns, frozenColumnWidth, rowColumnWidth]);
 
-    const otherColumns = columns.filter((col) => !col.meta?.frozen);
-    const stickyRowColumn =
-        stickyColumns.length > 0
-            ? {
-                  ...rowColumn,
-                  meta: {
-                      ...rowColumn.meta,
-                      className: 'sticky-column first-sticky-column',
-                      width: rowColumnWidth,
-                      style: {
-                          maxWidth: rowColumnWidth,
-                          minWidth: rowColumnWidth,
-                      },
-                  },
-              }
-            : rowColumn;
+    const otherColumns = useMemo(
+        () => columns.filter((col) => !col.meta?.frozen),
+        [columns],
+    );
+    const stickyRowColumn = useMemo(() => {
+        if (stickyColumns.length === 0) return rowColumn;
 
-    const visibleColumns = hideRowNumbers
-        ? [...stickyColumns, ...otherColumns]
-        : [stickyRowColumn, ...stickyColumns, ...otherColumns];
+        return {
+            ...rowColumn,
+            meta: {
+                ...rowColumn.meta,
+                className: 'sticky-column',
+                width: rowColumnWidth,
+                style: {
+                    maxWidth: rowColumnWidth,
+                    minWidth: rowColumnWidth,
+                    backgroundColor: 'white',
+                },
+            },
+        };
+    }, [stickyColumns, rowColumnWidth]);
+
+    const visibleColumns = useMemo(() => {
+        const cols = hideRowNumbers
+            ? [...stickyColumns, ...otherColumns]
+            : [stickyRowColumn, ...stickyColumns, ...otherColumns];
+
+        return cols.map((column) => {
+            return {
+                ...column,
+                cell: ({ getValue }) => {
+                    const value = getValue();
+
+                    if (value === undefined) {
+                        return null;
+                    }
+                    const meta = column.meta as TableColumn['meta'];
+                    return formatCellContent(value, meta?.item);
+                },
+            } satisfies ColumnDefBase<ResultRow, { value: ResultValue }>;
+        });
+    }, [hideRowNumbers, stickyColumns, otherColumns, stickyRowColumn]);
 
     const table = useReactTable({
         data,
         columns: visibleColumns,
         state: {
+            grouping,
             columnVisibility,
             columnOrder: tempColumnOrder,
             columnPinning: {
@@ -147,6 +154,10 @@ export const TableProvider: FC<Props> = ({
         onColumnOrderChange: setTempColumnOrder,
         getCoreRowModel: getCoreRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
+        onGroupingChange: setGrouping,
+        groupedColumnMode: false,
+        getExpandedRowModel: getExpandedRowModel(),
+        getGroupedRowModel: getGroupedRowModelLightdash(),
     });
 
     const { setPageSize } = table;
@@ -160,77 +171,9 @@ export const TableProvider: FC<Props> = ({
         }
     }, [pagination, setPageSize]);
 
-    const [selectedCell, setSelectedCell] =
-        useState<Cell<ResultRow, unknown>>();
-
-    const handleSelectCell = useCallback(
-        (cell: Cell<ResultRow, unknown> | undefined) => {
-            setSelectedCell(cell);
-        },
-        [],
-    );
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const handleDebouncedCellSelect = useCallback(
-        debounce(handleSelectCell, 300, {
-            leading: true,
-            trailing: false,
-        }),
-        [handleSelectCell],
-    );
-
-    const [copyingCellId, setCopyingCellId] = useState<string>();
-
-    const hotkeys = useMemo<HotkeyConfig[]>(
-        () => [
-            {
-                label: 'Copy value from the select cell',
-                combo: 'mod+c',
-                global: true,
-                disabled: !selectedCell,
-                onKeyDown: () => {
-                    if (!selectedCell) return;
-
-                    const value = (selectedCell.getValue() as ResultRow[0])
-                        .value;
-
-                    copy(value.formatted);
-
-                    showToastSuccess({ title: 'Copied to clipboard!' });
-
-                    setCopyingCellId((cellId) => {
-                        if (cellId) return;
-                        setTimeout(() => setCopyingCellId(undefined), 300);
-                        return selectedCell.id;
-                    });
-                },
-            },
-        ],
-        [selectedCell],
-    );
-
-    const { handleKeyDown } = useHotkeys(hotkeys);
-
     return (
-        <Context.Provider
-            value={{
-                table,
-                selectedCell,
-                onSelectCell: handleDebouncedCellSelect,
-                copyingCellId: copyingCellId,
-                onCopyCell: handleKeyDown,
-                ...rest,
-            }}
-        >
+        <Context.Provider value={{ table, ...rest }}>
             {children}
         </Context.Provider>
     );
 };
-
-export function useTableContext(): TableContext {
-    const context = useContext(Context);
-    if (context === undefined) {
-        throw new Error('useTableContext must be used within a TableProvider');
-    }
-    return context;
-}

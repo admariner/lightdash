@@ -6,23 +6,29 @@ import {
     ShareUrl,
 } from '@lightdash/common';
 import { nanoid as nanoidGenerator } from 'nanoid';
-import { analytics } from '../../analytics/client';
+import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
 import { LightdashConfig } from '../../config/parseConfig';
 import { ShareModel } from '../../models/ShareModel';
+import { BaseService } from '../BaseService';
 
-type Dependencies = {
+type ShareServiceArguments = {
+    analytics: LightdashAnalytics;
     shareModel: ShareModel;
     lightdashConfig: Pick<LightdashConfig, 'siteUrl'>;
 };
 
-export class ShareService {
+export class ShareService extends BaseService {
     private readonly lightdashConfig: Pick<LightdashConfig, 'siteUrl'>;
+
+    private readonly analytics: LightdashAnalytics;
 
     private readonly shareModel: ShareModel;
 
-    constructor(dependencies: Dependencies) {
-        this.lightdashConfig = dependencies.lightdashConfig;
-        this.shareModel = dependencies.shareModel;
+    constructor(args: ShareServiceArguments) {
+        super();
+        this.lightdashConfig = args.lightdashConfig;
+        this.analytics = args.analytics;
+        this.shareModel = args.shareModel;
     }
 
     private shareUrlWithHost(shareUrl: ShareUrl) {
@@ -51,7 +57,7 @@ export class ShareService {
         ) {
             throw new ForbiddenError();
         }
-        analytics.track({
+        this.analytics.track({
             userId: user.userUuid,
             event: 'share_url.used',
             properties: {
@@ -78,7 +84,7 @@ export class ShareService {
             createdByUserUuid: user.userUuid,
         });
 
-        analytics.track({
+        this.analytics.track({
             userId: user.userUuid,
             event: 'share_url.created',
             properties: {

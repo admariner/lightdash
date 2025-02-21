@@ -1,204 +1,349 @@
-import { Classes } from '@blueprintjs/core';
-import { MenuItem2 } from '@blueprintjs/popover2';
-import { ItemPredicate, ItemRenderer, MultiSelect2 } from '@blueprintjs/select';
 import {
-    OrganizationMemberProfile,
     OrganizationMemberRole,
-    Space,
+    type OrganizationMemberProfile,
+    type Space,
 } from '@lightdash/common';
-import { FC, useCallback, useMemo, useState } from 'react';
-import { useProjectAccess } from '../../../hooks/useProjectAccess';
-import { useAddSpaceShareMutation } from '../../../hooks/useSpaces';
 import {
-    FlexWrapper,
-    PrimaryAndSecondaryTextWrapper,
-    PrimaryText,
-    SecondaryText,
-    ShareButton,
-    UserCircle,
-} from './ShareSpaceModal.style';
+    Avatar,
+    Badge,
+    Button,
+    Center,
+    Group,
+    Loader,
+    MultiSelect,
+    ScrollArea,
+    Stack,
+    Text,
+    Tooltip,
+    type ScrollAreaProps,
+    type SelectItem,
+} from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
+import { IconUsers } from '@tabler/icons-react';
+import { uniq, uniqBy } from 'lodash';
+import {
+    forwardRef,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type FC,
+} from 'react';
+import { useInfiniteOrganizationGroups } from '../../../hooks/useOrganizationGroups';
+import { useInfiniteOrganizationUsers } from '../../../hooks/useOrganizationUsers';
+import { useProjectAccess } from '../../../hooks/useProjectAccess';
+import {
+    useAddGroupSpaceShareMutation,
+    useAddSpaceShareMutation,
+} from '../../../hooks/useSpaces';
+import MantineIcon from '../MantineIcon';
+import { DEFAULT_PAGE_SIZE } from '../Table/constants';
+import { UserAccessOptions } from './ShareSpaceSelect';
 import { getInitials, getUserNameOrEmail } from './Utils';
 
 interface ShareSpaceAddUserProps {
     space: Space;
     projectUuid: string;
-    organizationUsers: OrganizationMemberProfile[] | undefined;
 }
 
 export const ShareSpaceAddUser: FC<ShareSpaceAddUserProps> = ({
     space,
     projectUuid,
-    organizationUsers,
 }) => {
     const [usersSelected, setUsersSelected] = useState<string[]>([]);
     const [searchQuery, setSearchQuery] = useState<string>('');
+    const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
     const { data: projectAccess } = useProjectAccess(projectUuid);
-
-    const { mutate: shareSpaceMutation } = useAddSpaceShareMutation(
+    const selectScrollRef = useRef<HTMLDivElement>(null);
+    const { mutateAsync: shareSpaceMutation } = useAddSpaceShareMutation(
         projectUuid,
         space.uuid,
     );
+    const { mutateAsync: shareGroupSpaceMutation } =
+        useAddGroupSpaceShareMutation(projectUuid, space.uuid);
+
+    const {
+        data: infiniteOrganizationGroups,
+        fetchNextPage: fetchGroupsNextPage,
+        hasNextPage: hasGroupsNextPage,
+        isFetching: isGroupsFetching,
+    } = useInfiniteOrganizationGroups(
+        {
+            searchInput: debouncedSearchQuery,
+            includeMembers: 1,
+            pageSize: DEFAULT_PAGE_SIZE,
+        },
+        { keepPreviousData: true },
+    );
+
+    const {
+        data: infiniteOrganizationUsers,
+        fetchNextPage: fetchUsersNextPage,
+        hasNextPage: hasUsersNextPage,
+        isFetching: isUsersFetching,
+    } = useInfiniteOrganizationUsers(
+        {
+            searchInput: debouncedSearchQuery,
+            pageSize: DEFAULT_PAGE_SIZE,
+            projectUuid,
+            includeGroups: 10,
+        },
+        { keepPreviousData: true },
+    );
+
+    // Aggregates all fetched users across pages and search queries into a unified list.
+    // This ensures that previously fetched users are preserved even when the search query changes.
+    // Uses 'userUuid' to remove duplicates and maintain a consistent set of unique users.
+    const [allSearchedOrganizationUsers, setAllSearchedOrganizationUsers] =
+        useState<OrganizationMemberProfile[]>([]);
+    useEffect(() => {
+        const allPages =
+            infiniteOrganizationUsers?.pages.map((p) => p.data).flat() ?? [];
+
+        setAllSearchedOrganizationUsers((previousState) =>
+            uniqBy([...previousState, ...allPages], 'userUuid'),
+        );
+    }, [infiniteOrganizationUsers?.pages]);
+
+    const groups = useMemo(
+        () => infiniteOrganizationGroups?.pages.map((p) => p.data).flat(),
+        [infiniteOrganizationGroups?.pages],
+    );
+
+    const organizationUsers = useMemo(
+        () => infiniteOrganizationUsers?.pages.map((p) => p.data).flat(),
+        [infiniteOrganizationUsers?.pages],
+    );
 
     const userUuids: string[] = useMemo(() => {
-        if (organizationUsers === undefined) return [];
         const projectUserUuids =
             projectAccess?.map((project) => project.userUuid) || [];
-        const orgUserUuids = organizationUsers
-            .filter((user) => user.role !== OrganizationMemberRole.MEMBER)
-            .map((user) => user.userUuid);
+
+        const orgUserUuids =
+            organizationUsers
+                ?.filter((user) => user.role !== OrganizationMemberRole.MEMBER)
+                .map((user) => user.userUuid) ?? [];
+
         return [...new Set([...projectUserUuids, ...orgUserUuids])];
     }, [organizationUsers, projectAccess]);
 
-    const filterUser: ItemPredicate<string> = useCallback(
-        (query, userUuid, _index) => {
-            const user = organizationUsers?.find(
-                (userAccess) => userAccess.userUuid === userUuid,
-            );
-            if (!user) return false;
-            const normalizedQuery = query.toLowerCase();
-
-            return (
-                `${user.firstName} ${user.lastName} ${user.email}`
-                    .toLowerCase()
-                    .indexOf(normalizedQuery) >= 0
-            );
-        },
-        [organizationUsers],
-    );
-
-    const handleRemove = useCallback(
-        (selectedValue: React.ReactNode) => {
-            setUsersSelected(
-                usersSelected.filter(
-                    (userUuid) =>
-                        getUserNameOrEmail(userUuid, organizationUsers) !==
-                        selectedValue,
-                ),
-            );
-        },
-        [usersSelected, organizationUsers],
-    );
-
-    const renderUserShare: ItemRenderer<string> = useCallback(
-        (userUuid, { modifiers, handleClick, query }) => {
-            if (!modifiers.matchesPredicate) {
-                return null;
+    const UserItemComponent = useMemo(() => {
+        return forwardRef<HTMLDivElement, SelectItem>((props, ref) => {
+            if (props.group === 'Groups') {
+                return (
+                    <Group ref={ref} {...props} position={'apart'}>
+                        <Group>
+                            <Avatar size="md" radius="xl" color="blue">
+                                <MantineIcon icon={IconUsers} />
+                            </Avatar>
+                            <Stack spacing="two">
+                                <Text fw={500}>{props.label}</Text>
+                            </Stack>
+                        </Group>
+                    </Group>
+                );
             }
-            const user = organizationUsers?.find(
-                (userAccess) => userAccess.userUuid === userUuid,
+
+            const user = allSearchedOrganizationUsers.find(
+                (userAccess) => userAccess.userUuid === props.value,
             );
+
             if (!user) return null;
 
-            const isDisabled = space.access
-                .map((access) => access.userUuid)
-                .includes(userUuid);
+            const spaceAccess = space.access.find(
+                (access) => access.userUuid === user.userUuid,
+            );
+            const currentSpaceRoleTitle = spaceAccess
+                ? UserAccessOptions.find(
+                      (option) => option.value === spaceAccess.role,
+                  )?.title ?? 'No access'
+                : 'No access';
 
-            const isSelected = usersSelected.includes(userUuid) && !isDisabled;
+            const spaceRoleInheritanceInfo = `Access inherited from their ${spaceAccess?.inheritedFrom} role`;
 
             return (
-                <MenuItem2
-                    className={isSelected ? Classes.SELECTED : undefined}
-                    key={user.userUuid}
-                    title={
-                        isDisabled
-                            ? 'This user already has access to the space'
-                            : ''
-                    }
-                    disabled={isDisabled}
-                    text={
-                        <FlexWrapper key={user.userUuid}>
-                            <UserCircle>
-                                {getInitials(user.userUuid, organizationUsers)}
-                            </UserCircle>
-
-                            <PrimaryAndSecondaryTextWrapper
-                                $disabled={isDisabled}
-                            >
+                <Group ref={ref} {...props} position={'apart'}>
+                    <Tooltip
+                        label={spaceRoleInheritanceInfo}
+                        position="top"
+                        disabled={spaceAccess === undefined}
+                    >
+                        <Group>
+                            <Avatar size="md" radius="xl" color="blue">
+                                {getInitials(
+                                    user.userUuid,
+                                    user.firstName,
+                                    user.lastName,
+                                    user.email,
+                                )}
+                            </Avatar>
+                            <Stack spacing="two">
                                 {user.firstName || user.lastName ? (
                                     <>
-                                        <PrimaryText $selected={isSelected}>
+                                        <Text fw={500}>
                                             {user.firstName} {user.lastName}
-                                        </PrimaryText>
+                                        </Text>
 
-                                        <SecondaryText>
+                                        <Text size={'xs'} color="dimmed">
                                             {user.email}
-                                        </SecondaryText>
+                                        </Text>
                                     </>
                                 ) : (
-                                    <PrimaryText $selected={isSelected}>
-                                        {user.email}
-                                    </PrimaryText>
+                                    <Text fw={500}>{user.email}</Text>
                                 )}
-                            </PrimaryAndSecondaryTextWrapper>
-                        </FlexWrapper>
-                    }
-                    onClick={(e) => {
-                        // Toggle user selected if selected
-                        if (usersSelected.includes(user.userUuid))
-                            setUsersSelected(
-                                usersSelected.filter(
-                                    (uuid) => uuid !== user.userUuid,
-                                ),
-                            );
-                        else handleClick(e);
+                            </Stack>
+                        </Group>
+                    </Tooltip>
 
-                        setSearchQuery('');
-                    }}
-                    shouldDismissPopover={false}
-                />
+                    <Badge size="xs" color="gray.6" radius="xs">
+                        {currentSpaceRoleTitle}
+                    </Badge>
+                </Group>
             );
-        },
-        [usersSelected, space, organizationUsers],
-    );
+        });
+    }, [allSearchedOrganizationUsers, space.access]);
+
+    const data = useMemo(() => {
+        const userUuidsAndSelected = uniq([...userUuids, ...usersSelected]);
+
+        const usersSet = userUuidsAndSelected.map(
+            (userUuid): SelectItem | null => {
+                const user = allSearchedOrganizationUsers.find(
+                    (a) => a.userUuid === userUuid,
+                );
+
+                if (!user) return null;
+
+                const hasDirectAccess = !!(space.access || []).find(
+                    (access) => access.userUuid === userUuid,
+                )?.hasDirectAccess;
+
+                if (hasDirectAccess) return null;
+
+                return {
+                    value: userUuid,
+                    label: getUserNameOrEmail(
+                        user.userUuid,
+                        user.firstName,
+                        user.lastName,
+                        user.email,
+                    ),
+                    group: 'Users',
+                    email: user.email,
+                };
+            },
+        );
+
+        const groupsSet = groups
+            ?.filter(
+                (group) =>
+                    !space.groupsAccess.some(
+                        (ga) => ga.groupUuid === group.uuid,
+                    ),
+            )
+            .map((group): SelectItem | null => {
+                return {
+                    value: group.uuid,
+                    label: group.name,
+                    group: 'Groups',
+                };
+            });
+
+        return [...usersSet, ...(groupsSet ?? [])].filter(
+            (item): item is SelectItem => item !== null,
+        );
+    }, [
+        userUuids,
+        usersSelected,
+        groups,
+        allSearchedOrganizationUsers,
+        space.access,
+        space.groupsAccess,
+    ]);
+
+    useEffect(() => {
+        selectScrollRef.current?.scrollTo({
+            top: selectScrollRef.current?.scrollHeight,
+        });
+    }, [data]);
 
     return (
-        <FlexWrapper>
-            <MultiSelect2
-                fill
-                itemPredicate={filterUser}
-                itemRenderer={renderUserShare}
-                items={userUuids || []}
-                noResults={<MenuItem2 disabled text="No suggestions." />}
-                onItemSelect={(select) => {
-                    setUsersSelected([...usersSelected, select]);
-                    setSearchQuery('');
+        <Group>
+            <MultiSelect
+                style={{ flex: 1 }}
+                withinPortal
+                searchable
+                clearable
+                clearSearchOnChange
+                clearSearchOnBlur
+                placeholder="Select users to share this space with"
+                nothingFound="No users found"
+                searchValue={searchQuery}
+                onSearchChange={setSearchQuery}
+                value={usersSelected}
+                onChange={setUsersSelected}
+                data={data}
+                itemComponent={UserItemComponent}
+                maxDropdownHeight={300}
+                dropdownComponent={({ children, ...rest }: ScrollAreaProps) => (
+                    <ScrollArea {...rest} viewportRef={selectScrollRef}>
+                        {isUsersFetching || isGroupsFetching ? (
+                            <Center h={300}>
+                                <Loader size="md" />
+                            </Center>
+                        ) : (
+                            <>
+                                {children}
+                                {(hasUsersNextPage || hasGroupsNextPage) && (
+                                    <Button
+                                        size="xs"
+                                        variant="white"
+                                        onClick={async () => {
+                                            await Promise.all([
+                                                fetchGroupsNextPage(),
+                                                fetchUsersNextPage(),
+                                            ]);
+                                        }}
+                                        disabled={
+                                            isUsersFetching || isGroupsFetching
+                                        }
+                                    >
+                                        <Text>Load more</Text>
+                                    </Button>
+                                )}
+                            </>
+                        )}
+                    </ScrollArea>
+                )}
+                filter={(searchString, selected, item) => {
+                    return Boolean(
+                        item.group === 'Users' ||
+                            selected ||
+                            item.label
+                                ?.toLowerCase()
+                                .includes(searchString.toLowerCase()),
+                    );
                 }}
-                query={searchQuery}
-                onQueryChange={setSearchQuery}
-                tagRenderer={(userUuid) =>
-                    getUserNameOrEmail(userUuid, organizationUsers)
-                }
-                resetOnQuery={true}
-                popoverProps={{
-                    minimal: true,
-                    matchTargetWidth: true,
-                    onClosing: () => setSearchQuery(''),
-                }}
-                tagInputProps={{
-                    placeholder: 'Start typing to search for users...',
-                    addOnBlur: false,
-                    tagProps: {
-                        minimal: true,
-                    },
-                    onRemove: (e) => {
-                        setSearchQuery('');
-                        handleRemove(e);
-                    },
-                }}
-                selectedItems={usersSelected}
             />
 
-            <ShareButton
-                text="Share"
-                intent="primary"
+            <Button
                 disabled={usersSelected.length === 0}
                 onClick={async () => {
-                    for (const userUuid of usersSelected) {
-                        if (userUuid) await shareSpaceMutation(userUuid);
+                    for (const uuid of usersSelected) {
+                        const selectedValue = data.find(
+                            (item) => item.value === uuid,
+                        );
+                        if (selectedValue?.group === 'Users') {
+                            await shareSpaceMutation([uuid, 'viewer']);
+                        } else {
+                            await shareGroupSpaceMutation([uuid, 'viewer']);
+                        }
                     }
                     setUsersSelected([]);
                 }}
-            />
-        </FlexWrapper>
+            >
+                Share
+            </Button>
+        </Group>
     );
 };

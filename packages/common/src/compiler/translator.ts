@@ -1,42 +1,51 @@
 import {
+    SupportedDbtAdapter,
     buildModelGraph,
     convertColumnMetric,
     convertModelMetric,
-    DbtMetric,
-    DbtModelColumn,
-    DbtModelNode,
-    LineageGraph,
-    SupportedDbtAdapter,
+    convertToGroups,
+    isV9MetricRef,
+    type DbtColumnLightdashDimension,
+    type DbtMetric,
+    type DbtModelColumn,
+    type DbtModelNode,
+    type LineageGraph,
 } from '../types/dbt';
+import { MissingCatalogEntryError, ParseError } from '../types/errors';
 import {
-    MissingCatalogEntryError,
-    NonCompiledModelError,
-    ParseError,
-} from '../types/errors';
-import { Explore, ExploreError, Table } from '../types/explore';
+    InlineErrorType,
+    type Explore,
+    type ExploreError,
+    type Table,
+} from '../types/explore';
 import {
-    defaultSql,
-    Dimension,
     DimensionType,
     FieldType,
-    friendlyName,
-    Metric,
     MetricType,
+    defaultSql,
+    friendlyName,
     parseMetricType,
-    Source,
+    type Dimension,
+    type Metric,
+    type Source,
 } from '../types/field';
 import { parseFilters } from '../types/filterGrammar';
-import { OrderFieldsByStrategy } from '../types/table';
-import { TimeFrames } from '../types/timeFrames';
-import { WarehouseClient } from '../types/warehouse';
+import { type LightdashProjectConfig } from '../types/lightdashProjectConfig';
+import { OrderFieldsByStrategy, type GroupType } from '../types/table';
+import { type TimeFrames } from '../types/timeFrames';
+import { type WarehouseClient } from '../types/warehouse';
 import assertUnreachable from '../utils/assertUnreachable';
 import {
     getDefaultTimeFrames,
     timeFrameConfigs,
     validateTimeFrames,
-    WeekDay,
+    type WeekDay,
 } from '../utils/timeFrames';
 import { ExploreCompiler } from './exploreCompiler';
+import {
+    getCategoriesFromResource,
+    getSpotlightConfigurationForResource,
+} from './lightdashProjectConfig';
 
 const convertTimezone = (
     timestampSql: string,
@@ -77,6 +86,16 @@ const convertTimezone = (
     }
 };
 
+const isInterval = (
+    dimensionType: DimensionType,
+    { meta }: DbtModelColumn,
+): boolean =>
+    [DimensionType.DATE, DimensionType.TIMESTAMP].includes(dimensionType) &&
+    meta.dimension?.time_intervals !== false &&
+    ((meta.dimension?.time_intervals &&
+        meta.dimension.time_intervals !== 'OFF') ||
+        !meta?.dimension?.time_intervals);
+
 const convertDimension = (
     index: number,
     targetWarehouse: SupportedDbtAdapter,
@@ -86,6 +105,7 @@ const convertDimension = (
     source?: Source,
     timeInterval?: TimeFrames,
     startOfWeek?: WeekDay | null,
+    isAdditionalDimension?: boolean,
 ): Dimension => {
     let type =
         column.meta.dimension?.type || column.data_type || DimensionType.STRING;
@@ -99,14 +119,24 @@ const convertDimension = (
             {},
         );
     }
-    let group: string | undefined;
     let name = column.meta.dimension?.name || column.name;
     let sql = column.meta.dimension?.sql || defaultSql(column.name);
     let label = column.meta.dimension?.label || friendlyName(name);
     if (type === DimensionType.TIMESTAMP) {
         sql = convertTimezone(sql, 'UTC', 'UTC', targetWarehouse);
     }
+    const isIntervalBase =
+        timeInterval === undefined && isInterval(type, column);
+
+    let timeIntervalBaseDimensionName: string | undefined;
+
+    const groups: string[] = convertToGroups(
+        column.meta.dimension?.groups,
+        column.meta.dimension?.group_label,
+    );
+
     if (timeInterval) {
+        timeIntervalBaseDimensionName = name;
         sql = timeFrameConfigs[timeInterval].getSql(
             targetWarehouse,
             timeInterval,
@@ -118,7 +148,12 @@ const convertDimension = (
         label = `${label} ${timeFrameConfigs[timeInterval]
             .getLabel()
             .toLowerCase()}`;
-        group = column.name;
+
+        groups.push(
+            column.meta.dimension?.label ??
+                friendlyName(timeIntervalBaseDimensionName),
+        );
+
         type = timeFrameConfigs[timeInterval].getDimensionType(type);
     }
     return {
@@ -132,15 +167,26 @@ const convertDimension = (
         type,
         description: column.meta.dimension?.description || column.description,
         source,
-        group,
         timeInterval,
+        timeIntervalBaseDimensionName,
         hidden: !!column.meta.dimension?.hidden,
         format: column.meta.dimension?.format,
         round: column.meta.dimension?.round,
         compact: column.meta.dimension?.compact,
-        groupLabel: column.meta.dimension?.group_label,
+        requiredAttributes: column.meta.dimension?.required_attributes,
+        colors: column.meta.dimension?.colors,
         ...(column.meta.dimension?.urls
             ? { urls: column.meta.dimension.urls }
+            : {}),
+        ...(isAdditionalDimension ? { isAdditionalDimension } : {}),
+        groups,
+        isIntervalBase,
+        ...(column.meta.dimension && column.meta.dimension.tags
+            ? {
+                  tags: Array.isArray(column.meta.dimension.tags)
+                      ? column.meta.dimension.tags
+                      : [column.meta.dimension.tags],
+              }
             : {}),
     };
 };
@@ -169,6 +215,8 @@ const convertDbtMetricToLightdashMetric = (
     metric: DbtMetric,
     tableName: string,
     tableLabel: string,
+    spotlightConfig: LightdashProjectConfig['spotlight'],
+    modelCategories: string[] | undefined,
 ): Metric => {
     let sql: string;
     let type: MetricType;
@@ -219,6 +267,18 @@ const convertDbtMetricToLightdashMetric = (
             .join(' AND ');
         sql = `CASE WHEN ${filterSql} THEN ${sql} ELSE NULL END`;
     }
+    const groups: string[] = convertToGroups(
+        metric.meta?.groups,
+        metric.meta?.group_label,
+    );
+    const spotlightVisibility = spotlightConfig.default_visibility;
+
+    const spotlightCategories = getCategoriesFromResource(
+        'metric',
+        metric.name,
+        spotlightConfig,
+        Array.from(new Set([...(modelCategories || [])])),
+    );
 
     return {
         fieldType: FieldType.METRIC,
@@ -235,11 +295,22 @@ const convertDbtMetricToLightdashMetric = (
         round: metric.meta?.round,
         compact: metric.meta?.compact,
         format: metric.meta?.format,
-        groupLabel: metric.meta?.group_label,
+        groups,
         percentile: metric.meta?.percentile,
         showUnderlyingValues: metric.meta?.show_underlying_values,
         filters: parseFilters(metric.meta?.filters),
         ...(metric.meta?.urls ? { urls: metric.meta.urls } : {}),
+        ...(metric.meta && metric.meta.tags
+            ? {
+                  tags: Array.isArray(metric.meta.tags)
+                      ? metric.meta.tags
+                      : [metric.meta.tags],
+              }
+            : {}),
+        ...getSpotlightConfigurationForResource(
+            spotlightVisibility,
+            spotlightCategories,
+        ),
     };
 };
 
@@ -247,13 +318,12 @@ export const convertTable = (
     adapterType: SupportedDbtAdapter,
     model: DbtModelNode,
     dbtMetrics: DbtMetric[],
+    spotlightConfig: LightdashProjectConfig['spotlight'],
     startOfWeek?: WeekDay | null,
 ): Omit<Table, 'lineageGraph'> => {
-    if (!model.compiled) {
-        throw new NonCompiledModelError(`Model has not been compiled by dbt`);
-    }
     const meta = model.config?.meta || model.meta; // Config block takes priority, then meta block
     const tableLabel = meta.label || friendlyName(model.name);
+
     const [dimensions, metrics]: [
         Record<string, Dimension>,
         Record<string, Metric>,
@@ -270,45 +340,108 @@ export const convertTable = (
                 startOfWeek,
             );
 
-            let extraDimensions = {};
+            const processIntervalDimension = (
+                dim: Dimension,
+                overrideTimeIntervals: DbtColumnLightdashDimension['time_intervals'],
+            ) => {
+                if (dim.isIntervalBase) {
+                    let intervals: TimeFrames[] = [];
 
-            if (
-                [DimensionType.DATE, DimensionType.TIMESTAMP].includes(
-                    dimension.type,
-                ) &&
-                ((column.meta.dimension?.time_intervals &&
-                    column.meta.dimension.time_intervals !== 'OFF') ||
-                    !column.meta.dimension?.time_intervals)
-            ) {
-                let intervals: TimeFrames[] = [];
-                if (
-                    column.meta.dimension?.time_intervals &&
-                    Array.isArray(column.meta.dimension.time_intervals)
-                ) {
-                    intervals = validateTimeFrames(
-                        column.meta.dimension.time_intervals,
+                    if (
+                        !dim.isAdditionalDimension &&
+                        column.meta.dimension?.time_intervals &&
+                        Array.isArray(column.meta.dimension.time_intervals)
+                    ) {
+                        intervals = validateTimeFrames(
+                            column.meta.dimension.time_intervals,
+                        );
+                    } else if (
+                        dim.isAdditionalDimension &&
+                        Array.isArray(overrideTimeIntervals)
+                    ) {
+                        intervals = validateTimeFrames(overrideTimeIntervals);
+                    } else {
+                        intervals = getDefaultTimeFrames(dim.type);
+                    }
+
+                    return intervals.reduce(
+                        (acc, interval) => ({
+                            ...acc,
+                            [`${dim.name}_${interval.toLowerCase()}`]:
+                                convertDimension(
+                                    index,
+                                    adapterType,
+                                    model,
+                                    tableLabel,
+                                    {
+                                        ...column,
+                                        ...('isAdditionalDimension' in dim &&
+                                        dim.isAdditionalDimension
+                                            ? {
+                                                  name: dim.name,
+                                                  meta: {
+                                                      dimension: {
+                                                          ...column.meta
+                                                              .dimension,
+                                                          type: dim.type,
+                                                          label: dim.label,
+                                                          groups: dim.groups,
+                                                          sql: dim.sql,
+                                                          description:
+                                                              dim.description,
+                                                      },
+                                                  },
+                                              }
+                                            : {}),
+                                    },
+                                    undefined,
+                                    interval,
+                                    startOfWeek,
+                                    'isAdditionalDimension' in dim &&
+                                        dim.isAdditionalDimension,
+                                ),
+                        }),
+                        {},
                     );
-                } else {
-                    intervals = getDefaultTimeFrames(dimension.type);
                 }
+                return {};
+            };
 
-                extraDimensions = intervals.reduce(
-                    (acc, interval) => ({
-                        ...acc,
-                        [`${column.name}_${interval}`]: convertDimension(
-                            index,
-                            adapterType,
-                            model,
-                            tableLabel,
-                            column,
-                            undefined,
-                            interval,
-                            startOfWeek,
-                        ),
-                    }),
-                    {},
+            let extraDimensions = {
+                ...processIntervalDimension(dimension, undefined),
+            };
+
+            extraDimensions = Object.entries(
+                column.meta.additional_dimensions || {},
+            ).reduce((acc, [subDimensionName, subDimension]) => {
+                const additionalDim = convertDimension(
+                    index,
+                    adapterType,
+                    model,
+                    tableLabel,
+                    {
+                        ...column,
+                        name: subDimensionName,
+                        meta: {
+                            dimension: subDimension,
+                        },
+                    },
+                    undefined,
+                    undefined,
+                    startOfWeek,
+                    true,
                 );
-            }
+
+                return {
+                    ...acc,
+                    // When the additional dim is interval AND the base dimension is a interval base then we want to compute all additional dims with the parent intervals otherwise just set the additional dim
+                    [subDimensionName]: additionalDim,
+                    ...processIntervalDimension(
+                        additionalDim,
+                        subDimension.time_intervals,
+                    ),
+                };
+            }, extraDimensions);
 
             const columnMetrics = Object.fromEntries(
                 Object.entries(column.meta.metrics || {}).map(
@@ -321,6 +454,14 @@ export const convertTable = (
                             name,
                             metric,
                             tableLabel,
+                            requiredAttributes: dimension.requiredAttributes, // TODO Join dimension required_attributes with metric required_attributes
+                            spotlightConfig: {
+                                ...spotlightConfig,
+                                default_visibility:
+                                    model.meta.spotlight?.visibility ??
+                                    spotlightConfig.default_visibility,
+                            },
+                            modelCategories: model.meta.spotlight?.categories,
                         }),
                     ],
                 ),
@@ -346,6 +487,13 @@ export const convertTable = (
                 name,
                 metric,
                 tableLabel,
+                spotlightConfig: {
+                    ...spotlightConfig,
+                    default_visibility:
+                        model.meta.spotlight?.visibility ??
+                        spotlightConfig.default_visibility,
+                },
+                modelCategories: model.meta.spotlight?.categories,
             }),
         ]),
     );
@@ -353,7 +501,18 @@ export const convertTable = (
     const convertedDbtMetrics = Object.fromEntries(
         dbtMetrics.map((metric) => [
             metric.name,
-            convertDbtMetricToLightdashMetric(metric, model.name, tableLabel),
+            convertDbtMetricToLightdashMetric(
+                metric,
+                model.name,
+                tableLabel,
+                {
+                    ...spotlightConfig,
+                    default_visibility:
+                        model.meta.spotlight?.visibility ??
+                        spotlightConfig.default_visibility,
+                },
+                model.meta.spotlight?.categories,
+            ),
         ]),
     );
 
@@ -381,14 +540,25 @@ export const convertTable = (
     }
 
     if (!model.relation_name) {
-        throw new Error('Model has no table relation');
+        throw new Error(`Model "${model.name}" has no table relation`);
     }
+    const groupDetails: Record<string, GroupType> = {};
+    if (meta.group_details) {
+        Object.entries(meta.group_details).forEach(([key, data]) => {
+            groupDetails[key] = {
+                label: data.label,
+                description: data.description,
+            };
+        });
+    }
+
+    const sqlTable = model.meta.sql_from || model.relation_name;
     return {
         name: model.name,
         label: tableLabel,
         database: model.database,
         schema: model.schema,
-        sqlTable: model.relation_name,
+        sqlTable,
         description: model.description || `${model.name} table`,
         dimensions,
         metrics: allMetrics,
@@ -399,6 +569,19 @@ export const convertTable = (
             )
                 ? (meta.order_fields_by.toUpperCase() as OrderFieldsByStrategy)
                 : OrderFieldsByStrategy.LABEL,
+        groupLabel: meta.group_label,
+        sqlWhere: meta.sql_filter || meta.sql_where,
+        requiredFilters: parseFilters(meta.required_filters),
+        requiredAttributes: meta.required_attributes,
+        groupDetails,
+        ...(meta.default_time_dimension
+            ? {
+                  defaultTimeDimension: {
+                      field: meta.default_time_dimension.field,
+                      interval: meta.default_time_dimension.interval,
+                  },
+              }
+            : {}),
     };
 };
 
@@ -426,10 +609,16 @@ const modelCanUseMetric = (
     if (!metric) {
         return false;
     }
-    const modelRef = metric.refs?.[0]?.[0];
-    if (modelRef === modelName) {
-        return true;
+    const modelRef = metric?.refs?.[0];
+    if (modelRef) {
+        const modelRefName = isV9MetricRef(modelRef)
+            ? modelRef.name
+            : modelRef[0];
+        if (modelRefName === modelName) {
+            return true;
+        }
     }
+
     if (metric.calculation_method === 'derived') {
         const referencedMetrics = (metric.metrics || []).map((m) => m[0]);
         return referencedMetrics.every((m) =>
@@ -445,6 +634,7 @@ export const convertExplores = async (
     adapterType: SupportedDbtAdapter,
     metrics: DbtMetric[],
     warehouseClient: WarehouseClient,
+    lightdashProjectConfig: LightdashProjectConfig,
 ): Promise<(Explore | ExploreError)[]> => {
     const tableLineage = translateDbtModelsToTableLineage(models);
     const [tables, exploreErrors] = models.reduce(
@@ -460,6 +650,7 @@ export const convertExplores = async (
                     adapterType,
                     model,
                     tableMetrics,
+                    lightdashProjectConfig.spotlight,
                     warehouseClient.getStartOfWeek(),
                 );
 
@@ -475,17 +666,22 @@ export const convertExplores = async (
                 };
 
                 return [[...accTables, tableWithLineage], accErrors];
-            } catch (e) {
+            } catch (e: unknown) {
                 const exploreError: ExploreError = {
                     name: model.name,
                     label: meta.label || friendlyName(model.name),
                     tags: model.tags,
+                    groupLabel: meta.group_label,
                     errors: [
                         {
-                            type: e.name,
+                            type:
+                                e instanceof ParseError
+                                    ? InlineErrorType.METADATA_PARSE_ERROR
+                                    : InlineErrorType.NO_DIMENSIONS_FOUND,
                             message:
-                                e.message ||
-                                `Could not convert dbt model: "${model.name}" in to a Lightdash explore`,
+                                e instanceof Error
+                                    ? e.message
+                                    : `Could not convert dbt model: "${model.name}" in to a Lightdash explore`,
                         },
                     ],
                 };
@@ -501,30 +697,56 @@ export const convertExplores = async (
     const validModels = models.filter(
         (model) => tableLookup[model.name] !== undefined,
     );
+
     const exploreCompiler = new ExploreCompiler(warehouseClient);
     const explores: (Explore | ExploreError)[] = validModels.map((model) => {
         const meta = model.config?.meta || model.meta; // Config block takes priority, then meta block
+
         try {
             return exploreCompiler.compileExplore({
                 name: model.name,
                 label: meta.label || friendlyName(model.name),
                 tags: model.tags || [],
                 baseTable: model.name,
+                groupLabel: meta.group_label,
                 joinedTables: (meta?.joins || []).map((join) => ({
                     table: join.join,
                     sqlOn: join.sql_on,
+                    type: join.type,
                     alias: join.alias,
                     label: join.label,
                     fields: join.fields,
+                    hidden: join.hidden,
+                    always: join.always,
                 })),
                 tables: tableLookup,
                 targetDatabase: adapterType,
+                warehouse: model.config?.snowflake_warehouse,
+                databricksCompute: model.config?.databricks_compute,
+                ymlPath: model.patch_path?.split('://')?.[1],
+                sqlPath: model.path,
+                spotlightConfig: lightdashProjectConfig.spotlight,
+                meta,
             });
-        } catch (e) {
+        } catch (e: unknown) {
             return {
                 name: model.name,
                 label: meta.label || friendlyName(model.name),
-                errors: [{ type: e.name, message: e.message }],
+                groupLabel: meta.group_label,
+
+                errors: [
+                    {
+                        // TODO improve parsing of error type
+                        type:
+                            e instanceof ParseError
+                                ? InlineErrorType.METADATA_PARSE_ERROR
+                                : InlineErrorType.NO_DIMENSIONS_FOUND,
+                        message:
+                            e instanceof Error
+                                ? e.message
+                                : `Could not convert dbt model: "${model.name}" is not a valid model`,
+                    },
+                ],
             };
         }
     });
@@ -576,9 +798,10 @@ export const attachTypesToModels = (
     });
 
     const getType = (
-        { database, schema, name }: DbtModelNode,
+        { database, schema, name, alias }: DbtModelNode,
         columnName: string,
     ): DimensionType | undefined => {
+        const tableName = alias || name;
         const databaseMatch = Object.keys(warehouseCatalog).find((db) =>
             caseSensitiveMatching
                 ? db === database
@@ -597,8 +820,8 @@ export const attachTypesToModels = (
             Object.keys(warehouseCatalog[databaseMatch][schemaMatch]).find(
                 (t) =>
                     caseSensitiveMatching
-                        ? t === name
-                        : t.toLowerCase() === name.toLowerCase(),
+                        ? t === tableName
+                        : t.toLowerCase() === tableName.toLowerCase(),
             );
         const columnMatch =
             databaseMatch &&
@@ -618,7 +841,7 @@ export const attachTypesToModels = (
         }
         if (throwOnMissingCatalogEntry) {
             throw new MissingCatalogEntryError(
-                `Column "${columnName}" from model "${name}" does not exist.\n "${name}.${columnName}" was not found in your target warehouse at ${database}.${schema}.${name}. Try rerunning dbt to update your warehouse.`,
+                `Column "${columnName}" from model "${tableName}" does not exist.\n "${tableName}.${columnName}" was not found in your target warehouse at ${database}.${schema}.${tableName}. Try rerunning dbt to update your warehouse.`,
                 {},
             );
         }
@@ -640,8 +863,8 @@ export const attachTypesToModels = (
 export const getSchemaStructureFromDbtModels = (
     dbtModels: DbtModelNode[],
 ): { database: string; schema: string; table: string }[] =>
-    dbtModels.map(({ database, schema, name }) => ({
+    dbtModels.map(({ database, schema, name, alias }) => ({
         database,
         schema,
-        table: name,
+        table: alias || name,
     }));

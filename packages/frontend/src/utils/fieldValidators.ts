@@ -1,4 +1,4 @@
-import { validateEmail, validateGithubToken } from '@lightdash/common';
+import { isValidFrequency, validateGithubToken } from '@lightdash/common';
 
 type FieldValidator<T> = (
     fieldName: string,
@@ -31,30 +31,10 @@ export const startWithHTTPSProtocol: FieldValidator<string> =
             ? undefined
             : `${fieldName} should start with a "https://"`;
 
-export const isValidEmail: FieldValidator<string> = (fieldName) => (value) =>
-    !value || validateEmail(value) ? undefined : `${fieldName} is not valid`;
-
-export const isValidEmailDomain: FieldValidator<string[]> =
-    (fieldName) => (value) => {
-        if (value) {
-            const hasInvalidValue = value.some((item: string) =>
-                item.match(/@/),
-            );
-            return hasInvalidValue
-                ? `${fieldName} should not contain @, eg: (gmail.com)`
-                : undefined;
-        }
-    };
-
-export const isOnlyNumbers: FieldValidator<string> = (fieldName) => (value) =>
-    !value || value.match(/\D/)
-        ? `${fieldName} should only contain numbers`
-        : undefined;
-
 export const isValidGithubToken: FieldValidator<string> =
-    (fieldName) => (value) => {
+    (_fieldName) => (value) => {
         if (value) {
-            const [isValid, error] = validateGithubToken(value);
+            const [_isValid, error] = validateGithubToken(value);
             return error;
         }
     };
@@ -70,11 +50,14 @@ export const isInvalidCronExpression: FieldValidator<string> =
             if (cronValues.length !== 5) {
                 return `${fieldName} should only have 5 values separated by a space.`;
             }
-            const hasInvalidValues = cronValues.some(
-                (item: string) => !item.match(cronValueRegex),
-            );
-            return hasInvalidValues
-                ? `${fieldName} has invalid values. Example of valid values: "1", "1,2,3", "1-3", "*/5" and "*".`
-                : undefined;
+            if (
+                cronValues.some((item: string) => !item.match(cronValueRegex))
+            ) {
+                return `${fieldName} has invalid values. Example of valid values: "1", "1,2,3", "1-3", "*/5" and "*".`;
+            }
+            if (!isValidFrequency(value)) {
+                return `${fieldName} has invalid frequency, custom cron input is limited to hourly`;
+            }
+            return undefined;
         }
     };

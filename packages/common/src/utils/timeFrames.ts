@@ -1,7 +1,7 @@
 import { SupportedDbtAdapter } from '../types/dbt';
 import { ParseError } from '../types/errors';
 import { DimensionType } from '../types/field';
-import { TimeFrames } from '../types/timeFrames';
+import { DateGranularity, TimeFrames } from '../types/timeFrames';
 
 export enum WeekDay {
     MONDAY,
@@ -36,8 +36,11 @@ const nullTimeFrameMap: Record<TimeFrames, null> = {
     RAW: null,
     SECOND: null,
     WEEK: null,
+    WEEK_NUM: null,
     YEAR: null,
     YEAR_NUM: null,
+    HOUR_OF_DAY_NUM: null,
+    MINUTE_OF_HOUR_NUM: null,
 };
 
 const timeFrameToDatePartMap: Record<TimeFrames, string | null> = {
@@ -45,9 +48,12 @@ const timeFrameToDatePartMap: Record<TimeFrames, string | null> = {
     [TimeFrames.DAY_OF_WEEK_INDEX]: 'DOW',
     [TimeFrames.DAY_OF_MONTH_NUM]: 'DAY',
     [TimeFrames.DAY_OF_YEAR_NUM]: 'DOY',
+    [TimeFrames.WEEK_NUM]: 'WEEK',
     [TimeFrames.MONTH_NUM]: 'MONTH',
     [TimeFrames.QUARTER_NUM]: 'QUARTER',
     [TimeFrames.YEAR_NUM]: 'YEAR',
+    [TimeFrames.HOUR_OF_DAY_NUM]: 'HOUR',
+    [TimeFrames.MINUTE_OF_HOUR_NUM]: 'MINUTE',
 };
 
 type WarehouseConfig = {
@@ -61,6 +67,7 @@ type WarehouseConfig = {
         timeFrame: TimeFrames,
         originalSql: string,
         type: DimensionType,
+        startOfWeek?: WeekDay | null,
     ) => string;
     getSqlForDatePartName: (
         timeFrame: TimeFrames,
@@ -69,27 +76,33 @@ type WarehouseConfig = {
     ) => string;
 };
 
+const bigqueryStartOfWeekMap: Record<WeekDay, string> = {
+    [WeekDay.MONDAY]: 'MONDAY',
+    [WeekDay.TUESDAY]: 'TUESDAY',
+    [WeekDay.WEDNESDAY]: 'WEDNESDAY',
+    [WeekDay.THURSDAY]: 'THURSDAY',
+    [WeekDay.FRIDAY]: 'FRIDAY',
+    [WeekDay.SATURDAY]: 'SATURDAY',
+    [WeekDay.SUNDAY]: 'SUNDAY',
+};
+
 const bigqueryConfig: WarehouseConfig = {
     getSqlForTruncatedDate: (timeFrame, originalSql, type, startOfWeek) => {
-        const bigqueryStartOfWeekMap: Record<WeekDay, string> = {
-            [WeekDay.MONDAY]: 'MONDAY',
-            [WeekDay.TUESDAY]: 'TUESDAY',
-            [WeekDay.WEDNESDAY]: 'WEDNESDAY',
-            [WeekDay.THURSDAY]: 'THURSDAY',
-            [WeekDay.FRIDAY]: 'FRIDAY',
-            [WeekDay.SATURDAY]: 'SATURDAY',
-            [WeekDay.SUNDAY]: 'SUNDAY',
-        };
         const datePart =
             timeFrame === TimeFrames.WEEK && isWeekDay(startOfWeek)
                 ? `${timeFrame}(${bigqueryStartOfWeekMap[startOfWeek]})`
                 : timeFrame;
         if (type === DimensionType.TIMESTAMP) {
-            return `DATETIME_TRUNC(${originalSql}, ${datePart})`;
+            return `TIMESTAMP_TRUNC(${originalSql}, ${datePart})`;
         }
         return `DATE_TRUNC(${originalSql}, ${datePart})`;
     },
-    getSqlForDatePart: (timeFrame: TimeFrames, originalSql: string) => {
+    getSqlForDatePart: (
+        timeFrame: TimeFrames,
+        originalSql: string,
+        _,
+        startOfWeek,
+    ) => {
         const bigqueryTimeFrameExpressions: Record<TimeFrames, string | null> =
             {
                 ...timeFrameToDatePartMap,
@@ -97,9 +110,15 @@ const bigqueryConfig: WarehouseConfig = {
                 [TimeFrames.DAY_OF_YEAR_NUM]: 'DAYOFYEAR',
             };
         const datePart = bigqueryTimeFrameExpressions[timeFrame];
+
         if (!datePart) {
             throw new ParseError(`Cannot recognise date part for ${timeFrame}`);
         }
+
+        if (timeFrame === TimeFrames.WEEK_NUM && isWeekDay(startOfWeek)) {
+            return `EXTRACT(${datePart}(${bigqueryStartOfWeekMap[startOfWeek]}) FROM ${originalSql})`;
+        }
+
         return `EXTRACT(${datePart} FROM ${originalSql})`;
     },
     getSqlForDatePartName: (
@@ -127,14 +146,17 @@ const bigqueryConfig: WarehouseConfig = {
     },
 };
 
+// Snowflake handles start of week by setting a session variable (WEEK_START)
 const snowflakeConfig: WarehouseConfig = {
     getSqlForTruncatedDate: (timeFrame, originalSql) =>
         `DATE_TRUNC('${timeFrame}', ${originalSql})`,
     getSqlForDatePart: (timeFrame: TimeFrames, originalSql: string) => {
         const datePart = timeFrameToDatePartMap[timeFrame];
+
         if (!datePart) {
             throw new ParseError(`Cannot recognise date part for ${timeFrame}`);
         }
+
         return `DATE_PART('${datePart}', ${originalSql})`;
     },
     getSqlForDatePartName: (timeFrame: TimeFrames, originalSql: string) => {
@@ -168,11 +190,23 @@ const postgresConfig: WarehouseConfig = {
         }
         return `DATE_TRUNC('${timeFrame}', ${originalSql})`;
     },
-    getSqlForDatePart: (timeFrame: TimeFrames, originalSql: string) => {
+    getSqlForDatePart: (
+        timeFrame: TimeFrames,
+        originalSql: string,
+        _,
+        startOfWeek,
+    ) => {
         const datePart = timeFrameToDatePartMap[timeFrame];
+
         if (!datePart) {
             throw new ParseError(`Cannot recognise date part for ${timeFrame}`);
         }
+
+        if (timeFrame === TimeFrames.WEEK_NUM && isWeekDay(startOfWeek)) {
+            const intervalDiff = `${startOfWeek} days`;
+            return `DATE_PART('${datePart}', (${originalSql} - interval '${intervalDiff}'))`;
+        }
+
         return `DATE_PART('${datePart}', ${originalSql})`;
     },
     getSqlForDatePartName: (timeFrame: TimeFrames, originalSql: string) => {
@@ -189,7 +223,7 @@ const postgresConfig: WarehouseConfig = {
                 `Cannot recognise format expression for ${timeFrame}`,
             );
         }
-        return `TO_CHAR(${originalSql}, '${formatExpression}')`;
+        return `TO_CHAR(${originalSql}, 'FM${formatExpression}')`;
     },
 };
 
@@ -201,11 +235,23 @@ const databricksConfig: WarehouseConfig = {
         }
         return `DATE_TRUNC('${timeFrame}', ${originalSql})`;
     },
-    getSqlForDatePart: (timeFrame: TimeFrames, originalSql: string) => {
+    getSqlForDatePart: (
+        timeFrame: TimeFrames,
+        originalSql: string,
+        _,
+        startOfWeek,
+    ) => {
         const datePart = timeFrameToDatePartMap[timeFrame];
+
         if (!datePart) {
             throw new ParseError(`Cannot recognise date part for ${timeFrame}`);
         }
+
+        if (timeFrame === TimeFrames.WEEK_NUM && isWeekDay(startOfWeek)) {
+            const intervalDiff = `${startOfWeek} days`;
+            return `DATE_PART('${datePart}', (${originalSql} - interval '${intervalDiff}'))`;
+        }
+
         return `DATE_PART('${datePart}', ${originalSql})`;
     },
     getSqlForDatePartName: (timeFrame: TimeFrames, originalSql: string) => {
@@ -234,11 +280,22 @@ const trinoConfig: WarehouseConfig = {
         }
         return `DATE_TRUNC('${timeFrame}', ${originalSql})`;
     },
-    getSqlForDatePart: (timeFrame: TimeFrames, originalSql: string) => {
+    getSqlForDatePart: (
+        timeFrame: TimeFrames,
+        originalSql: string,
+        _,
+        startOfWeek,
+    ) => {
         const datePart = timeFrameToDatePartMap[timeFrame];
         if (!datePart) {
             throw new ParseError(`Cannot recognise date part for ${timeFrame}`);
         }
+
+        if (timeFrame === TimeFrames.WEEK_NUM && isWeekDay(startOfWeek)) {
+            const intervalDiff = `'${startOfWeek}' day`;
+            return `EXTRACT(${datePart} FROM (${originalSql} - interval ${intervalDiff}))`;
+        }
+
         return `EXTRACT(${datePart} FROM ${originalSql})`;
     },
     getSqlForDatePartName: (timeFrame: TimeFrames, originalSql: string) => {
@@ -272,7 +329,7 @@ const warehouseConfigs: Record<SupportedDbtAdapter, WarehouseConfig> = {
     [SupportedDbtAdapter.TRINO]: trinoConfig,
 };
 
-const getSqlForTruncatedDate: TimeFrameConfig['getSql'] = (
+export const getSqlForTruncatedDate: TimeFrameConfig['getSql'] = (
     adapterType,
     timeFrame,
     originalSql,
@@ -290,11 +347,13 @@ const getSqlForDatePart: TimeFrameConfig['getSql'] = (
     timeFrame,
     originalSql,
     type,
+    startOfWeek,
 ) =>
     warehouseConfigs[adapterType].getSqlForDatePart(
         timeFrame,
         originalSql,
         type,
+        startOfWeek,
     );
 const getSqlForDatePartName: TimeFrameConfig['getSql'] = (
     adapterType,
@@ -363,14 +422,19 @@ export const timeFrameConfigs: Record<TimeFrames, TimeFrameConfig> = {
         getDimensionType: () => DimensionType.DATE,
         getSql: getSqlForTruncatedDate,
         getAxisMinInterval: () => null,
-        getAxisLabelFormatter: () => ({ hour: '' }),
+        getAxisLabelFormatter: () => ({
+            year: '{bold|{yyyy}}',
+            month: '{bold|{MMM}}',
+            day: '{d}',
+            hour: '',
+        }),
     },
     WEEK: {
         getLabel: () => 'Week',
         getDimensionType: () => DimensionType.DATE,
         getSql: getSqlForTruncatedDate,
         getAxisMinInterval: () => null,
-        getAxisLabelFormatter: () => ({ hour: '' }),
+        getAxisLabelFormatter: () => null,
     },
     MONTH: {
         getLabel: () => 'Month',
@@ -391,6 +455,13 @@ export const timeFrameConfigs: Record<TimeFrames, TimeFrameConfig> = {
         getDimensionType: () => DimensionType.DATE,
         getSql: getSqlForTruncatedDate,
         getAxisMinInterval: () => 31557600000,
+        getAxisLabelFormatter: () => null,
+    },
+    WEEK_NUM: {
+        getLabel: () => 'Week (number)',
+        getDimensionType: () => DimensionType.NUMBER,
+        getSql: getSqlForDatePart,
+        getAxisMinInterval: () => null,
         getAxisLabelFormatter: () => null,
     },
     MONTH_NUM: {
@@ -456,6 +527,20 @@ export const timeFrameConfigs: Record<TimeFrames, TimeFrameConfig> = {
         getAxisMinInterval: () => null,
         getAxisLabelFormatter: () => null,
     },
+    HOUR_OF_DAY_NUM: {
+        getLabel: () => 'Hour of day (number)',
+        getDimensionType: () => DimensionType.NUMBER,
+        getSql: getSqlForDatePart,
+        getAxisMinInterval: () => null,
+        getAxisLabelFormatter: () => null,
+    },
+    MINUTE_OF_HOUR_NUM: {
+        getLabel: () => 'Minute of hour (number)',
+        getDimensionType: () => DimensionType.NUMBER,
+        getSql: getSqlForDatePart,
+        getAxisMinInterval: () => null,
+        getAxisLabelFormatter: () => null,
+    },
 };
 
 export const getDefaultTimeFrames = (type: DimensionType) =>
@@ -492,6 +577,7 @@ const timeFrameOrder = [
     TimeFrames.DAY_OF_MONTH_NUM,
     TimeFrames.DAY_OF_YEAR_NUM,
     TimeFrames.WEEK,
+    TimeFrames.WEEK_NUM,
     TimeFrames.MONTH,
     TimeFrames.MONTH_NUM,
     TimeFrames.MONTH_NAME,
@@ -500,7 +586,35 @@ const timeFrameOrder = [
     TimeFrames.QUARTER_NAME,
     TimeFrames.YEAR,
     TimeFrames.YEAR_NUM,
+    TimeFrames.HOUR_OF_DAY_NUM,
+    TimeFrames.MINUTE_OF_HOUR_NUM,
 ];
 
 export const sortTimeFrames = (a: TimeFrames, b: TimeFrames) =>
     timeFrameOrder.indexOf(a) - timeFrameOrder.indexOf(b);
+
+export const getDateDimension = (dimensionId: string) => {
+    const timeFrames = Object.values(DateGranularity).map((tf) =>
+        tf.toLowerCase(),
+    );
+    const isDate = timeFrames.some((timeFrame) =>
+        dimensionId.endsWith(timeFrame),
+    );
+
+    if (isDate) {
+        const regex = new RegExp(`_(${timeFrames.join('|')})$`);
+
+        const baseDimensionId = dimensionId.replace(regex, '');
+
+        const timeString = dimensionId.replace(`${baseDimensionId}_`, '');
+        const [newTimeFrame] = validateTimeFrames([timeString]);
+
+        if (baseDimensionId && newTimeFrame)
+            return {
+                baseDimensionId,
+                newTimeFrame,
+            };
+    }
+
+    return {};
+};

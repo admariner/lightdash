@@ -1,17 +1,19 @@
+import { type AnyType } from './any';
 import { OrganizationMemberRole } from './organizationMemberProfile';
-import { ProjectType } from './projects';
+import { ProjectMemberRole } from './projectMemberRole';
+import { type ProjectType, type WarehouseTypes } from './projects';
 
 /**
  * Details of a user's Organization
  */
-export type Organisation = {
+export type Organization = {
     /**
-     * The unique identifier of the organisation
+     * The unique identifier of the organization
      * @format uuid
      */
     organizationUuid: string;
     /**
-     * The name of the organisation
+     * The name of the organization
      */
     name: string;
 
@@ -23,15 +25,21 @@ export type Organisation = {
      * The organization needs a project if it doesn't have at least one project.
      */
     needsProject?: boolean;
+    /**
+     * The project a user sees when they first log in to the organization
+     */
+    defaultProjectUuid?: string;
 };
 
+export type CreateOrganization = Pick<Organization, 'name'>;
+
 export type UpdateOrganization = Partial<
-    Omit<Organisation, 'organizationUuid' | 'needsProject'>
+    Omit<Organization, 'organizationUuid' | 'needsProject'>
 >;
 
 export type ApiOrganization = {
     status: 'ok';
-    results: Organisation;
+    results: Organization;
 };
 
 /**
@@ -45,6 +53,10 @@ export type OrganizationProject = {
     projectUuid: string;
     name: string;
     type: ProjectType;
+    createdByUserUuid: string | null;
+    upstreamProjectUuid: string | null;
+    warehouseType: WarehouseTypes;
+    requireUserCredentials: boolean;
 };
 
 /**
@@ -69,11 +81,51 @@ export type ApiOnboardingStatusResponse = {
     results: OnboardingStatus;
 };
 
+export type AllowedEmailDomainsRole =
+    | OrganizationMemberRole.EDITOR
+    | OrganizationMemberRole.INTERACTIVE_VIEWER
+    | OrganizationMemberRole.VIEWER
+    | OrganizationMemberRole.MEMBER;
+
+export const AllowedEmailDomainsRoles: Array<AllowedEmailDomainsRole> = [
+    OrganizationMemberRole.EDITOR,
+    OrganizationMemberRole.INTERACTIVE_VIEWER,
+    OrganizationMemberRole.VIEWER,
+    OrganizationMemberRole.MEMBER,
+];
+
+export function isAllowedEmailDomainsRole(
+    role: OrganizationMemberRole,
+): role is AllowedEmailDomainsRole {
+    return AllowedEmailDomainsRoles.includes(role as AnyType);
+}
+
+export type AllowedEmailDomainProjectsRole =
+    | ProjectMemberRole.EDITOR
+    | ProjectMemberRole.INTERACTIVE_VIEWER
+    | ProjectMemberRole.VIEWER;
+
+export const AllowedEmailDomainProjectRoles: Array<AllowedEmailDomainProjectsRole> =
+    [
+        ProjectMemberRole.EDITOR,
+        ProjectMemberRole.INTERACTIVE_VIEWER,
+        ProjectMemberRole.VIEWER,
+    ];
+
+export function isAllowedEmailDomainProjectRole(
+    role: ProjectMemberRole | OrganizationMemberRole,
+): role is AllowedEmailDomainProjectsRole {
+    return (AllowedEmailDomainProjectRoles as unknown[]).includes(role);
+}
+
 export type AllowedEmailDomains = {
     organizationUuid: string;
     emailDomains: string[];
-    role: OrganizationMemberRole;
-    projectUuids: string[];
+    role: AllowedEmailDomainsRole;
+    projects: Array<{
+        projectUuid: string;
+        role: AllowedEmailDomainProjectsRole;
+    }>;
 };
 
 export type UpdateAllowedEmailDomains = Omit<

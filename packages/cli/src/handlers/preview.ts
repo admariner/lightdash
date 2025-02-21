@@ -1,15 +1,13 @@
+import * as core from '@actions/core';
 import { Project, ProjectType } from '@lightdash/common';
 import chokidar from 'chokidar';
 import inquirer from 'inquirer';
 import path from 'path';
-import {
-    adjectives,
-    animals,
-    uniqueNamesGenerator,
-} from 'unique-names-generator';
+import { animals, colors, uniqueNamesGenerator } from 'unique-names-generator';
 import { URL } from 'url';
+import { v4 as uuidv4 } from 'uuid';
 import { LightdashAnalytics } from '../analytics/analytics';
-import { getConfig } from '../config';
+import { getConfig, setPreviewProject, unsetPreviewProject } from '../config';
 import { getDbtContext } from '../dbt/context';
 import GlobalState from '../globalState';
 import * as styles from '../styles';
@@ -27,11 +25,58 @@ type PreviewHandlerOptions = DbtCompileOptions & {
     name?: string;
     verbose: boolean;
     startOfWeek?: number;
+    ignoreErrors: boolean;
 };
 
 type StopPreviewHandlerOptions = {
     name: string;
     verbose: boolean;
+};
+
+const deletePreviewProject = async (
+    projectUuid: string | undefined,
+): Promise<void> => {
+    /**
+     * projectUuid may be undefined here if a command fails early enough
+     * that a project was never created, or we were otherwise unable to
+     * retrieve a UUID. We know `undefined` will always fail, so we avoid
+     * the round-trip.
+     */
+    if (typeof projectUuid === 'undefined') {
+        GlobalState.debug(
+            'no projectUuid available to delete, may not have been ready yet - skipping',
+        );
+
+        return;
+    }
+
+    await lightdashApi({
+        method: 'DELETE',
+        url: `/api/v1/org/projects/${projectUuid}`,
+        body: undefined,
+    });
+};
+
+const cleanupProject = async (
+    executionId: string,
+    projectUuid: string,
+): Promise<void> => {
+    const teardownSpinner = GlobalState.startSpinner(`  Cleaning up`);
+
+    try {
+        await deletePreviewProject(projectUuid);
+        await LightdashAnalytics.track({
+            event: 'preview.stopped',
+            properties: {
+                executionId,
+                projectId: projectUuid,
+            },
+        });
+        teardownSpinner.succeed(`  Cleaned up`);
+    } catch (e) {
+        console.error('Error during cleanup:', e);
+        teardownSpinner.fail(`  Cleanup failed`);
+    }
 };
 
 const projectUrl = async (project: Project): Promise<URL> => {
@@ -63,24 +108,52 @@ export const previewHandler = async (
     options: PreviewHandlerOptions,
 ): Promise<void> => {
     GlobalState.setVerbose(options.verbose);
+    const executionId = uuidv4();
     await checkLightdashVersion();
-    const name = uniqueNamesGenerator({
-        length: 2,
-        separator: ' ',
-        dictionaries: [adjectives, animals],
-    });
+    let name = options?.name;
+    if (name === undefined) {
+        name = uniqueNamesGenerator({
+            length: 2,
+            separator: ' ',
+            dictionaries: [colors, animals],
+        });
+    }
+
     console.error('');
     const spinner = GlobalState.startSpinner(
         `  Setting up preview environment`,
     );
+
+    const previewProject = await getPreviewProject(name);
+    if (previewProject) {
+        GlobalState.debug(`> Preview with the same name already running`);
+        spinner.fail();
+        throw new Error('Preview with the same name already running.');
+    }
+
     let project: Project | undefined;
+    let hasContentCopy = false;
+
+    const config = await getConfig();
+
+    if (!config.context?.project) {
+        console.error(
+            styles.warning(
+                `\n\nDeveloper preview will be deployed without any copied content!\nPlease set a project to copy content from by running 'lightdash config set-project'.\n`,
+            ),
+        );
+    }
 
     try {
-        project = await createProject({
+        const results = await createProject({
             ...options,
             name,
             type: ProjectType.PREVIEW,
+            upstreamProjectUuid: config.context?.project,
         });
+
+        project = results?.project;
+        hasContentCopy = Boolean(results?.hasContentCopy);
     } catch (e) {
         GlobalState.debug(`> Unable to create project: ${e}`);
         spinner.fail();
@@ -92,7 +165,6 @@ export const previewHandler = async (
         console.error(
             "To create your project, you'll need to manually enter your warehouse connection details.",
         );
-        const config = await getConfig();
         const createProjectUrl =
             config.context?.serverUrl &&
             new URL('/createProject', config.context.serverUrl);
@@ -107,6 +179,7 @@ export const previewHandler = async (
     await LightdashAnalytics.track({
         event: 'preview.started',
         properties: {
+            executionId,
             projectId: project.projectUuid,
         },
     });
@@ -115,13 +188,36 @@ export const previewHandler = async (
         await deploy(explores, {
             ...options,
             projectUuid: project.projectUuid,
-            ignoreErrors: true,
         });
+
+        await setPreviewProject(project.projectUuid, name);
+
+        process.on('SIGINT', async () => {
+            await cleanupProject(executionId, project!.projectUuid);
+
+            process.exit(0);
+        });
+
+        if (!hasContentCopy) {
+            console.error(
+                styles.warning(
+                    `\n\nDeveloper preview deployed without any copied content!\n`,
+                ),
+            );
+        }
+
         spinner.succeed(
             `  Developer preview "${name}" ready at: ${await projectUrl(
                 project,
             )}\n`,
         );
+        await LightdashAnalytics.track({
+            event: 'preview.completed',
+            properties: {
+                executionId,
+                projectId: project.projectUuid,
+            },
+        });
 
         const absoluteProjectPath = path.resolve(options.projectDir);
         const context = await getDbtContext({
@@ -149,7 +245,6 @@ export const previewHandler = async (
                     await deploy(await compile(options), {
                         ...options,
                         projectUuid: project.projectUuid,
-                        ignoreErrors: true,
                     });
                 }
 
@@ -170,33 +265,22 @@ export const previewHandler = async (
         pressToShutdown.clear();
     } catch (e) {
         spinner.fail('Error creating developer preview');
-        await lightdashApi({
-            method: 'DELETE',
-            url: `/api/v1/org/projects/${project.projectUuid}`,
-            body: undefined,
-        });
+
+        await deletePreviewProject(project.projectUuid);
+        await unsetPreviewProject();
+
         await LightdashAnalytics.track({
             event: 'preview.error',
             properties: {
+                executionId,
                 projectId: project.projectUuid,
                 error: `Error creating developer preview ${e}`,
             },
         });
         throw e;
     }
-    const teardownSpinner = GlobalState.startSpinner(`  Cleaning up`);
-    await lightdashApi({
-        method: 'DELETE',
-        url: `/api/v1/org/projects/${project.projectUuid}`,
-        body: undefined,
-    });
-    await LightdashAnalytics.track({
-        event: 'preview.completed',
-        properties: {
-            projectId: project.projectUuid,
-        },
-    });
-    teardownSpinner.succeed(`  Cleaned up`);
+
+    await cleanupProject(executionId, project.projectUuid);
 };
 
 export const startPreviewHandler = async (
@@ -204,7 +288,7 @@ export const startPreviewHandler = async (
 ): Promise<void> => {
     GlobalState.setVerbose(options.verbose);
     await checkLightdashVersion();
-
+    const executionId = uuidv4();
     if (!options.name) {
         console.error(styles.error(`--name argument is required`));
         return;
@@ -214,9 +298,11 @@ export const startPreviewHandler = async (
 
     const previewProject = await getPreviewProject(projectName);
     if (previewProject) {
+        await setPreviewProject(previewProject.projectUuid, projectName);
         await LightdashAnalytics.track({
             event: 'start_preview.update',
             properties: {
+                executionId,
                 projectId: previewProject.projectUuid,
                 name: options.name,
             },
@@ -228,27 +314,40 @@ export const startPreviewHandler = async (
         await deploy(explores, {
             ...options,
             projectUuid: previewProject.projectUuid,
-            ignoreErrors: true,
         });
         const url = await projectUrl(previewProject);
         console.error(`Project updated on ${url}`);
         if (process.env.CI === 'true') {
-            console.info(`::set-output name=url::${url}`);
+            core.setOutput('url', url.toString());
+            core.setOutput('project_uuid', previewProject.projectUuid);
         }
     } else {
+        const config = await getConfig();
+
+        if (!config.context?.project) {
+            console.error(
+                styles.warning(
+                    `\n\nDeveloper preview will be deployed without any copied content!\nPlease set a project to copy content from by running 'lightdash config set-project'.\n`,
+                ),
+            );
+        }
+
         // Create
         console.error(`Creating new project preview ${projectName}`);
-        const project = await createProject({
+        const results = await createProject({
             ...options,
             name: projectName,
             type: ProjectType.PREVIEW,
+            upstreamProjectUuid: config.context?.project,
         });
+
+        const project = results?.project;
+        const hasContentCopy = Boolean(results?.hasContentCopy);
 
         if (!project) {
             console.error(
                 "To create your project, you'll need to manually enter your warehouse connection details.",
             );
-            const config = await getConfig();
             const createProjectUrl =
                 config.context?.serverUrl &&
                 new URL('/createProject', config.context.serverUrl);
@@ -259,9 +358,13 @@ export const startPreviewHandler = async (
             }
             return;
         }
+
+        await setPreviewProject(project.projectUuid, projectName);
+
         await LightdashAnalytics.track({
             event: 'start_preview.create',
             properties: {
+                executionId,
                 projectId: project.projectUuid,
                 name: options.name,
             },
@@ -270,12 +373,21 @@ export const startPreviewHandler = async (
         await deploy(explores, {
             ...options,
             projectUuid: project.projectUuid,
-            ignoreErrors: true,
         });
         const url = await projectUrl(project);
+
+        if (!hasContentCopy) {
+            console.error(
+                styles.warning(
+                    `\n\nDeveloper preview deployed without any copied content!\n`,
+                ),
+            );
+        }
+
         console.error(`New project created on ${url}`);
         if (process.env.CI === 'true') {
-            console.info(`::set-output name=url::${url}`);
+            core.setOutput('url', url.toString());
+            core.setOutput('project_uuid', project.projectUuid);
         }
     }
 };
@@ -285,7 +397,7 @@ export const stopPreviewHandler = async (
 ): Promise<void> => {
     GlobalState.setVerbose(options.verbose);
     await checkLightdashVersion();
-
+    const executionId = uuidv4();
     if (!options.name) {
         console.error(styles.error(`--name argument is required`));
         return;
@@ -293,21 +405,20 @@ export const stopPreviewHandler = async (
 
     const projectName = options.name;
 
+    await unsetPreviewProject();
+
     const previewProject = await getPreviewProject(projectName);
     if (previewProject) {
         await LightdashAnalytics.track({
             event: 'stop_preview.delete',
             properties: {
+                executionId,
                 projectId: previewProject.projectUuid,
                 name: options.name,
             },
         });
 
-        await lightdashApi({
-            method: 'DELETE',
-            url: `/api/v1/org/projects/${previewProject.projectUuid}`,
-            body: undefined,
-        });
+        await deletePreviewProject(previewProject.projectUuid);
         console.error(
             `Successfully deleted preview project named ${projectName}`,
         );
@@ -318,9 +429,11 @@ export const stopPreviewHandler = async (
                 name: options.name,
             },
         });
-
         console.error(
-            `Could not find preview project with name ${projectName}`,
+            styles.error(
+                `Could not find preview project with name ${projectName}`,
+            ),
         );
+        process.exit(1);
     }
 };

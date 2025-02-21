@@ -1,24 +1,35 @@
-import { Divider, Menu, Position } from '@blueprintjs/core';
-import { MenuItem2, Popover2 } from '@blueprintjs/popover2';
 import {
-    fieldId,
+    getItemId,
+    getItemLabelWithoutTableName,
+    isCustomDimension,
     isField,
     isFilterableField,
-    TableCalculation,
+    isMetric,
+    isNumericItem,
+    isTableCalculation,
+    type TableCalculation,
 } from '@lightdash/common';
-import { IconChevronDown } from '@tabler/icons-react';
-import { FC, useState } from 'react';
-import { useFilters } from '../../../hooks/useFilters';
-import { useExplorerContext } from '../../../providers/ExplorerProvider';
-import { useTracking } from '../../../providers/TrackingProvider';
-import { EventName } from '../../../types/Events';
-import { HeaderProps, TableColumn } from '../../common/Table/types';
+import { ActionIcon, Menu, Text } from '@mantine/core';
+import {
+    IconChevronDown,
+    IconFilter,
+    IconPencil,
+    IconTrash,
+} from '@tabler/icons-react';
+import { useMemo, useState, type FC } from 'react';
 import {
     DeleteTableCalculationModal,
     UpdateTableCalculationModal,
-} from '../../TableCalculationModels';
-import { BolderLabel, FlatButton } from './ColumnHeaderContextMenu.styles';
+} from '../../../features/tableCalculation';
+import { useFilters } from '../../../hooks/useFilters';
+import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
+import useTracking from '../../../providers/Tracking/useTracking';
+import { EventName } from '../../../types/Events';
+import MantineIcon from '../../common/MantineIcon';
+import { type HeaderProps, type TableColumn } from '../../common/Table/types';
 import ColumnHeaderSortMenuOptions from './ColumnHeaderSortMenuOptions';
+import FormatMenuOptions from './FormatMenuOptions';
+import QuickCalculationMenuOptions from './QuickCalculations';
 
 interface ContextMenuProps extends HeaderProps {
     onToggleCalculationEditModal: (value: boolean) => void;
@@ -41,58 +52,183 @@ const ContextMenu: FC<ContextMenuProps> = ({
         (context) => context.actions.removeActiveField,
     );
 
-    if (item && isField(item) && isFilterableField(item)) {
-        const itemFieldId = fieldId(item);
+    const additionalMetrics = useExplorerContext(
+        (context) =>
+            context.state.unsavedChartVersion.metricQuery.additionalMetrics,
+    );
+
+    const additionalMetric = useMemo(
+        () =>
+            !!additionalMetrics &&
+            !!item &&
+            additionalMetrics.find((am) => getItemId(am) === getItemId(item)),
+        [additionalMetrics, item],
+    );
+
+    const isItemAdditionalMetric = !!additionalMetric;
+
+    const toggleAdditionalMetricModal = useExplorerContext(
+        (context) => context.actions.toggleAdditionalMetricModal,
+    );
+
+    const toggleCustomDimensionModal = useExplorerContext(
+        (context) => context.actions.toggleCustomDimensionModal,
+    );
+
+    const removeCustomDimension = useExplorerContext(
+        (context) => context.actions.removeCustomDimension,
+    );
+
+    if (item && isField(item)) {
+        const itemFieldId = getItemId(item);
         return (
-            <Menu>
-                <MenuItem2
-                    text={
-                        <>
-                            Filter by <BolderLabel>{item.label}</BolderLabel>
-                        </>
-                    }
-                    icon="filter"
+            <>
+                {isFilterableField(item) && (
+                    <>
+                        <Menu.Item
+                            icon={<MantineIcon icon={IconFilter} />}
+                            onClick={() => {
+                                track({ name: EventName.ADD_FILTER_CLICKED });
+                                addFilter(item, undefined, false);
+                            }}
+                        >
+                            Filter by{' '}
+                            <Text span fw={500}>
+                                {getItemLabelWithoutTableName(item)}
+                            </Text>
+                        </Menu.Item>
+
+                        <Menu.Divider />
+                    </>
+                )}
+
+                <ColumnHeaderSortMenuOptions item={item} sort={sort} />
+
+                <Menu.Divider />
+                {isMetric(item) && (
+                    <>
+                        {!isItemAdditionalMetric && isNumericItem(item) && (
+                            <>
+                                <FormatMenuOptions item={item} />
+                                <Menu.Divider />
+                            </>
+                        )}
+
+                        <QuickCalculationMenuOptions item={item} />
+                        <Menu.Divider />
+                    </>
+                )}
+
+                {isItemAdditionalMetric ? (
+                    <Menu.Item
+                        icon={<MantineIcon icon={IconPencil} />}
+                        onClick={() => {
+                            toggleAdditionalMetricModal({
+                                item: additionalMetric,
+                                type: additionalMetric.type,
+                                isEditing: true,
+                            });
+                        }}
+                    >
+                        Edit custom metric
+                    </Menu.Item>
+                ) : null}
+
+                <Menu.Item
+                    icon={<MantineIcon icon={IconTrash} />}
+                    color="red"
+                    onClick={() => {
+                        removeActiveField(itemFieldId);
+                    }}
+                >
+                    Remove
+                </Menu.Item>
+            </>
+        );
+    } else if (meta?.isInvalidItem) {
+        return (
+            <>
+                <Menu.Item
+                    icon={<MantineIcon icon={IconTrash} />}
+                    color="red"
+                    onClick={() => {
+                        removeActiveField(header.column.id);
+                    }}
+                >
+                    Remove
+                </Menu.Item>
+            </>
+        );
+    } else if (item && isCustomDimension(item)) {
+        return (
+            <>
+                {isFilterableField(item) && (
+                    <>
+                        <Menu.Item
+                            icon={<MantineIcon icon={IconFilter} />}
+                            onClick={() => {
+                                track({ name: EventName.ADD_FILTER_CLICKED });
+                                addFilter(item, undefined, false);
+                            }}
+                        >
+                            Filter by{' '}
+                            <Text span fw={500}>
+                                {getItemLabelWithoutTableName(item)}
+                            </Text>
+                        </Menu.Item>
+
+                        <Menu.Divider />
+                    </>
+                )}
+
+                <Menu.Item
+                    icon={<MantineIcon icon={IconPencil} />}
+                    onClick={() => {
+                        toggleCustomDimensionModal({
+                            item,
+                            isEditing: true,
+                        });
+                    }}
+                >
+                    Edit custom dimension
+                </Menu.Item>
+                <Menu.Divider />
+
+                <ColumnHeaderSortMenuOptions item={item} sort={sort} />
+
+                <Menu.Divider />
+
+                <Menu.Item
+                    icon={<MantineIcon icon={IconTrash} />}
+                    color="red"
+                    onClick={() => {
+                        removeCustomDimension(getItemId(item));
+                    }}
+                >
+                    Remove
+                </Menu.Item>
+            </>
+        );
+    } else if (item && isTableCalculation(item)) {
+        return (
+            <>
+                <Menu.Item
+                    icon={<MantineIcon icon={IconFilter} />}
                     onClick={() => {
                         track({ name: EventName.ADD_FILTER_CLICKED });
                         addFilter(item, undefined, false);
                     }}
-                />
+                >
+                    Filter by{' '}
+                    <Text span fw={500}>
+                        {getItemLabelWithoutTableName(item)}
+                    </Text>
+                </Menu.Item>
 
-                <Divider />
+                <Menu.Divider />
 
-                <ColumnHeaderSortMenuOptions item={item} sort={sort} />
-
-                <Divider />
-
-                <MenuItem2
-                    text="Remove"
-                    icon="cross"
-                    intent="danger"
-                    onClick={() => {
-                        removeActiveField(itemFieldId);
-                    }}
-                />
-            </Menu>
-        );
-    } else if (meta?.isInvalidItem) {
-        return (
-            <Menu>
-                <MenuItem2
-                    text="Remove"
-                    icon="cross"
-                    intent="danger"
-                    onClick={() => {
-                        removeActiveField(header.column.id);
-                    }}
-                />
-            </Menu>
-        );
-    } else if (item && !isField(item)) {
-        return (
-            <Menu>
-                <MenuItem2
-                    text="Edit calculation"
-                    icon="edit"
+                <Menu.Item
+                    icon={<MantineIcon icon={IconPencil} />}
                     onClick={() => {
                         track({
                             name: EventName.EDIT_TABLE_CALCULATION_BUTTON_CLICKED,
@@ -100,18 +236,19 @@ const ContextMenu: FC<ContextMenuProps> = ({
 
                         onToggleCalculationEditModal(true);
                     }}
-                />
+                >
+                    Edit calculation
+                </Menu.Item>
 
-                <Divider />
+                <Menu.Divider />
 
                 <ColumnHeaderSortMenuOptions item={item} sort={sort} />
 
-                <Divider />
+                <Menu.Divider />
 
-                <MenuItem2
-                    text="Remove"
-                    icon="cross"
-                    intent="danger"
+                <Menu.Item
+                    icon={<MantineIcon icon={IconTrash} />}
+                    color="red"
                     onClick={() => {
                         track({
                             name: EventName.DELETE_TABLE_CALCULATION_BUTTON_CLICKED,
@@ -119,8 +256,10 @@ const ContextMenu: FC<ContextMenuProps> = ({
 
                         onToggleCalculationDeleteModal(true);
                     }}
-                />
-            </Menu>
+                >
+                    Remove
+                </Menu.Item>
+            </>
         );
     } else {
         return null;
@@ -141,28 +280,25 @@ const ColumnHeaderContextMenu: FC<HeaderProps> = ({ header }) => {
                     e.stopPropagation();
                 }}
             >
-                <Popover2
-                    lazy
-                    minimal
-                    position={Position.BOTTOM_RIGHT}
-                    content={
+                <Menu withinPortal withArrow shadow="md">
+                    <Menu.Target>
+                        <ActionIcon size="xs" variant="light" bg="transparent">
+                            <MantineIcon icon={IconChevronDown} />
+                        </ActionIcon>
+                    </Menu.Target>
+
+                    <Menu.Dropdown>
                         <ContextMenu
                             header={header}
                             onToggleCalculationEditModal={setShowUpdate}
                             onToggleCalculationDeleteModal={setShowDelete}
                         />
-                    }
-                >
-                    <FlatButton
-                        minimal
-                        small
-                        icon={<IconChevronDown size={17} />}
-                    />
-                </Popover2>
+                    </Menu.Dropdown>
+                </Menu>
 
                 {showUpdate && (
                     <UpdateTableCalculationModal
-                        isOpen
+                        opened
                         tableCalculation={item as TableCalculation}
                         onClose={() => setShowUpdate(false)}
                     />
@@ -170,7 +306,6 @@ const ColumnHeaderContextMenu: FC<HeaderProps> = ({ header }) => {
 
                 {showDelete && (
                     <DeleteTableCalculationModal
-                        isOpen
                         tableCalculation={item as TableCalculation}
                         onClose={() => setShowDelete(false)}
                     />

@@ -1,20 +1,30 @@
-import { ForbiddenError, isUserWithOrg, SessionUser } from '@lightdash/common';
-import { analytics } from '../../analytics/client';
-import { AnalyticsModel } from '../../models/AnalyticsModel';
+import {
+    AnyType,
+    ForbiddenError,
+    isUserWithOrg,
+    SessionUser,
+    UserActivity,
+} from '@lightdash/common';
 
-type Dependencies = {
+import { subject } from '@casl/ability';
+import { LightdashAnalytics } from '../../analytics/LightdashAnalytics';
+import { AnalyticsModel } from '../../models/AnalyticsModel';
+import { BaseService } from '../BaseService';
+
+type AnalyticsServiceArguments = {
+    analytics: LightdashAnalytics;
     analyticsModel: AnalyticsModel;
 };
 
-export class AnalyticsService {
+export class AnalyticsService extends BaseService {
+    private readonly analytics: LightdashAnalytics;
+
     private readonly analyticsModel: AnalyticsModel;
 
-    constructor(dependencies: Dependencies) {
-        this.analyticsModel = dependencies.analyticsModel;
-    }
-
-    async getChartViews(chartUuid: string): Promise<number> {
-        return this.analyticsModel.countChartViews(chartUuid);
+    constructor(args: AnalyticsServiceArguments) {
+        super();
+        this.analytics = args.analytics;
+        this.analyticsModel = args.analyticsModel;
     }
 
     async getDashboardViews(dashboardUuid: string): Promise<number> {
@@ -24,15 +34,22 @@ export class AnalyticsService {
     async getUserActivity(
         projectUuid: string,
         user: SessionUser,
-    ): Promise<any> {
+    ): Promise<UserActivity> {
         if (!isUserWithOrg(user)) {
             throw new ForbiddenError('User is not part of an organization');
         }
-        if (user.ability.cannot('view', 'Analytics')) {
+        if (
+            user.ability.cannot(
+                'view',
+                subject('Analytics', {
+                    organizationUuid: user.organizationUuid,
+                }),
+            )
+        ) {
             throw new ForbiddenError();
         }
 
-        analytics.track({
+        this.analytics.track({
             event: 'usage_analytics.dashboard_viewed',
             userId: user.userUuid,
             properties: {

@@ -1,5 +1,6 @@
 import { ForbiddenError } from '@lightdash/common';
-import { shareModel } from '../../models/models';
+import { analyticsMock } from '../../analytics/LightdashAnalytics.mock';
+import { ShareModel } from '../../models/ShareModel';
 import { ShareService } from './ShareService';
 import {
     Config,
@@ -11,16 +12,15 @@ import {
     UserFromAnotherOrg,
 } from './ShareService.mock';
 
-jest.mock('../../models/models', () => ({
-    shareModel: {
-        createSharedUrl: jest.fn(async () => SampleShareUrl),
-        getSharedUrl: jest.fn(async () => SampleShareUrl),
-    },
-}));
+const shareModel = {
+    createSharedUrl: jest.fn(async () => SampleShareUrl),
+    getSharedUrl: jest.fn(async () => SampleShareUrl),
+};
 
 describe('share', () => {
     const shareService = new ShareService({
-        shareModel,
+        analytics: analyticsMock,
+        shareModel: shareModel as unknown as ShareModel,
         lightdashConfig: Config,
     });
 

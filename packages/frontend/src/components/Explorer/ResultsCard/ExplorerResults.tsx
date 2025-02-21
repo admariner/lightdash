@@ -1,12 +1,14 @@
-import { Colors } from '@blueprintjs/core';
-import { Field, getItemMap, TableCalculation } from '@lightdash/common';
-import React, { FC, memo, ReactNode, useCallback, useMemo } from 'react';
+import { getItemMap } from '@lightdash/common';
+import { Box, Text } from '@mantine/core';
+import { memo, useCallback, useMemo, useState, type FC } from 'react';
+
 import { useColumns } from '../../../hooks/useColumns';
 import { useExplore } from '../../../hooks/useExplore';
-import { useExplorerContext } from '../../../providers/ExplorerProvider';
-import { TrackSection } from '../../../providers/TrackingProvider';
+import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
+import { TrackSection } from '../../../providers/Tracking/TrackingProvider';
 import { SectionName } from '../../../types/Events';
 import Table from '../../common/Table';
+import { JsonViewerModal } from '../../JsonViewerModal';
 import CellContextMenu from './CellContextMenu';
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu';
 import {
@@ -40,9 +42,10 @@ export const ExplorerResults = memo(() => {
     const setColumnOrder = useExplorerContext(
         (context) => context.actions.setColumnOrder,
     );
-    const { isLoading, data: exploreData } = useExplore(activeTableName, {
-        refetchOnMount: false,
-    });
+    const { isInitialLoading, data: exploreData } = useExplore(
+        activeTableName,
+        { refetchOnMount: false },
+    );
     const tableCalculations = useExplorerContext(
         (context) =>
             context.state.unsavedChartVersion.metricQuery.tableCalculations,
@@ -51,49 +54,70 @@ export const ExplorerResults = memo(() => {
         (context) =>
             context.state.unsavedChartVersion.metricQuery.additionalMetrics,
     );
+    const [isExpandModalOpened, setIsExpandModalOpened] = useState(false);
+    const [expandData, setExpandData] = useState<{
+        name: string;
+        jsonObject: Record<string, unknown>;
+    }>({
+        name: 'unknown',
+        jsonObject: {},
+    });
 
-    const itemsMap: Record<string, Field | TableCalculation> | undefined =
-        useMemo(() => {
-            if (exploreData) {
-                return getItemMap(
-                    exploreData,
-                    additionalMetrics,
-                    tableCalculations,
-                );
-            }
-            return undefined;
-        }, [exploreData, additionalMetrics, tableCalculations]);
+    const handleCellExpand = (name: string, data: Record<string, unknown>) => {
+        setExpandData({
+            name: name,
+            jsonObject: data,
+        });
+        setIsExpandModalOpened(true);
+    };
+
+    const itemsMap = useMemo(() => {
+        if (exploreData) {
+            return getItemMap(
+                exploreData,
+                additionalMetrics,
+                tableCalculations,
+            );
+        }
+        return undefined;
+    }, [exploreData, additionalMetrics, tableCalculations]);
 
     const cellContextMenu = useCallback(
-        (props) => (
+        (props: any) => (
             <CellContextMenu
                 isEditMode={isEditMode}
                 {...props}
                 itemsMap={itemsMap}
+                onExpand={handleCellExpand}
             />
         ),
         [isEditMode, itemsMap],
     );
 
     const IdleState: FC = useCallback(() => {
-        let description: ReactNode =
-            'Run query to view your results and visualize them as a chart.';
-        if (dimensions.length <= 0) {
-            description = (
+        const description =
+            dimensions.length <= 0 ? (
                 <>
                     Pick one or more{' '}
-                    <span style={{ color: Colors.BLUE1 }}>dimensions</span> to
-                    split your selected metric by.
+                    <Text span color="blue.9">
+                        dimensions
+                    </Text>{' '}
+                    to split your selected metric by.
                 </>
-            );
-        } else if (metrics.length <= 0) {
-            description = (
+            ) : metrics.length <= 0 ? (
                 <>
-                    Pick a <span style={{ color: Colors.ORANGE1 }}>metric</span>{' '}
+                    Pick a{' '}
+                    <Text span color="yellow.9">
+                        metric
+                    </Text>{' '}
                     to make calculations across your selected dimensions.
                 </>
+            ) : (
+                <>
+                    Run query to view your results and visualize them as a
+                    chart.
+                </>
             );
-        }
 
         return <EmptyStateNoTableData description={description} />;
     }, [dimensions.length, metrics.length]);
@@ -113,26 +137,34 @@ export const ExplorerResults = memo(() => {
 
     if (!activeTableName) return <NoTableSelected />;
 
-    if (isLoading) return <EmptyStateExploreLoading />;
+    if (isInitialLoading) return <EmptyStateExploreLoading />;
 
     if (columns.length === 0) return <EmptyStateNoColumns />;
-
     return (
         <TrackSection name={SectionName.RESULTS_TABLE}>
-            <Table
-                status={status}
-                data={resultsData?.rows || []}
-                columns={columns}
-                columnOrder={explorerColumnOrder}
-                onColumnOrderChange={setColumnOrder}
-                cellContextMenu={cellContextMenu}
-                headerContextMenu={
-                    isEditMode ? ColumnHeaderContextMenu : undefined
-                }
-                idleState={IdleState}
-                pagination={pagination}
-                footer={footer}
-            />
+            <Box px="xs" py="lg">
+                <Table
+                    status={status}
+                    data={resultsData?.rows || []}
+                    columns={columns}
+                    columnOrder={explorerColumnOrder}
+                    onColumnOrderChange={setColumnOrder}
+                    cellContextMenu={cellContextMenu}
+                    headerContextMenu={
+                        isEditMode ? ColumnHeaderContextMenu : undefined
+                    }
+                    idleState={IdleState}
+                    pagination={pagination}
+                    footer={footer}
+                    showSubtotals={false}
+                />
+                <JsonViewerModal
+                    heading={`Field: ${expandData.name}`}
+                    jsonObject={expandData.jsonObject}
+                    opened={isExpandModalOpened}
+                    onClose={() => setIsExpandModalOpened(false)}
+                />
+            </Box>
         </TrackSection>
     );
 });

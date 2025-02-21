@@ -1,16 +1,19 @@
 import {
-    ApiQueryResults,
-    CartesianSeriesType,
     DimensionType,
-    Explore,
-    getDimensions,
+    getDimensionsFromItemsMap,
     getItemId,
     getSeriesId,
-    Series,
+    isDimension,
+    type ApiQueryResults,
+    type CartesianSeriesType,
+    type ItemsMap,
+    type Series,
 } from '@lightdash/common';
-import { getPivotedData } from '../plottedData/usePlottedData';
+import { getPivotedData } from '../plottedData/getPlottedData';
 
 export type GetExpectedSeriesMapArgs = {
+    defaultSmooth?: boolean;
+    defaultShowSymbol?: boolean;
     defaultCartesianType: CartesianSeriesType;
     defaultAreaStyle: Series['areaStyle'];
     isStacked: boolean;
@@ -19,9 +22,12 @@ export type GetExpectedSeriesMapArgs = {
     yFields: string[];
     xField: string;
     availableDimensions: string[];
+    defaultLabel?: Series['label'];
 };
 
 export const getExpectedSeriesMap = ({
+    defaultSmooth,
+    defaultShowSymbol,
     defaultCartesianType,
     defaultAreaStyle,
     isStacked,
@@ -30,8 +36,18 @@ export const getExpectedSeriesMap = ({
     yFields,
     xField,
     availableDimensions,
+    defaultLabel,
 }: GetExpectedSeriesMapArgs) => {
     let expectedSeriesMap: Record<string, Series>;
+
+    const defaultProperties = {
+        smooth: defaultSmooth,
+        showSymbol: defaultShowSymbol,
+        type: defaultCartesianType,
+        areaStyle: defaultAreaStyle,
+        yAxisIndex: 0,
+        label: defaultLabel,
+    };
     if (pivotKeys && pivotKeys.length > 0) {
         const { rowKeyMap } = getPivotedData(
             resultsData.rows,
@@ -46,23 +62,21 @@ export const getExpectedSeriesMap = ({
             let series: Series;
             if (typeof rowKey === 'string') {
                 series = {
+                    ...defaultProperties,
                     encode: {
                         xRef: { field: xField },
                         yRef: {
                             field: rowKey,
                         },
                     },
-                    type: defaultCartesianType,
-                    areaStyle: defaultAreaStyle,
                 };
             } else {
                 series = {
-                    type: defaultCartesianType,
+                    ...defaultProperties,
                     encode: {
                         xRef: { field: xField },
                         yRef: rowKey,
                     },
-                    areaStyle: defaultAreaStyle,
                     stack:
                         defaultAreaStyle || isStacked
                             ? rowKey.field
@@ -75,14 +89,13 @@ export const getExpectedSeriesMap = ({
         expectedSeriesMap = (yFields || []).reduce<Record<string, Series>>(
             (sum, yField) => {
                 const series = {
+                    ...defaultProperties,
                     encode: {
                         xRef: { field: xField },
                         yRef: {
                             field: yField,
                         },
                     },
-                    type: defaultCartesianType,
-                    areaStyle: defaultAreaStyle,
                     stack:
                         isStacked || !!defaultAreaStyle
                             ? 'stack-all-series'
@@ -112,20 +125,43 @@ export const mergeExistingAndExpectedSeries = ({
         }>(
             (sum, series) => {
                 const id = getSeriesId(series);
-                if (!Object.keys(expectedSeriesMap).includes(id)) {
+
+                // this results in a string without the pivot values
+                //e.g. 'orders_order_date_month|orders_average_order_size.orders_is_completed.true' -> 'orders_order_date_month|orders_average_order_size.orders_is_completed'
+                // used to check if the series is not expected but part of the same pivot of expected series
+                const idWithoutPivotValues = id.replace(/\.[^.]+$/, '');
+
+                const isSeriesExpected =
+                    Object.keys(expectedSeriesMap).includes(id);
+
+                const isSeriesFilteredOut =
+                    Object.keys(expectedSeriesMap).some((expectedId) =>
+                        expectedId.startsWith(idWithoutPivotValues),
+                    ) && !isSeriesExpected;
+
+                if (!isSeriesExpected && !isSeriesFilteredOut) {
                     return { ...sum };
                 }
+
                 return {
                     ...sum,
-                    existingValidSeries: [...sum.existingValidSeries, series],
+                    existingValidSeries: [
+                        ...sum.existingValidSeries,
+                        {
+                            ...series,
+                            isFilteredOut: isSeriesFilteredOut,
+                        },
+                    ],
                     existingValidSeriesIds: [...sum.existingValidSeriesIds, id],
                 };
             },
             { existingValidSeries: [], existingValidSeriesIds: [] },
         );
+
     if (existingValidSeries.length <= 0) {
         return Object.values(expectedSeriesMap);
     }
+
     // add missing series in the correct order (next to series of the same group)
     return Object.entries(expectedSeriesMap).reduce<Series[]>(
         (acc, [expectedSeriesId, expectedSeries]) => {
@@ -191,17 +227,18 @@ export const getSeriesGroupedByField = (series: Series[]) => {
 
 export const sortDimensions = (
     dimensionIds: string[],
-    explore: Explore | undefined,
+    itemsMap: ItemsMap | undefined,
     columnOrder: string[],
 ) => {
-    if (!explore) return dimensionIds;
+    if (!itemsMap) return dimensionIds;
 
     if (dimensionIds.length <= 1) return dimensionIds;
 
-    const dimensions = getDimensions(explore);
+    const dimensions = Object.values(getDimensionsFromItemsMap(itemsMap));
 
     const dateDimensions = dimensions.filter(
         (dimension) =>
+            isDimension(dimension) &&
             dimensionIds.includes(getItemId(dimension)) &&
             [DimensionType.DATE, DimensionType.TIMESTAMP].includes(
                 dimension.type,

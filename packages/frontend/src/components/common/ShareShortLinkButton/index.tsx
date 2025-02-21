@@ -1,43 +1,41 @@
-import copy from 'copy-to-clipboard';
-import React, { FC, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import useToaster from '../../../hooks/toaster/useToaster';
+import { ActionIcon } from '@mantine/core';
+import { IconCheck, IconLink } from '@tabler/icons-react';
+import { type FC } from 'react';
+import { useLocation } from 'react-router';
+import { useAsyncClipboard } from '../../../hooks/useAsyncClipboard';
 import { useCreateShareMutation } from '../../../hooks/useShare';
-import { ShareLink } from './ShareShortLinkButton.styles';
+import MantineIcon from '../MantineIcon';
 
-const ShareShortLinkButton: FC<{ disabled?: boolean }> = ({ disabled }) => {
-    const { showToastSuccess } = useToaster();
-
+const ShareShortLinkButton: FC<{
+    disabled?: boolean;
+    url?: { pathname: string; search: string };
+}> = ({ disabled, url }) => {
     const location = useLocation();
-    const {
-        isLoading,
-        mutate: createShareUrl,
-        data: newShareUrl,
-    } = useCreateShareMutation();
 
+    const { isLoading, mutateAsync: createShareUrl } = useCreateShareMutation();
     const isDisabled = disabled || isLoading;
 
-    useEffect(() => {
-        if (newShareUrl) {
-            copy(newShareUrl.shareUrl || '');
-            showToastSuccess({
-                title: 'Link copied to clipboard',
-            });
-        }
-    }, [newShareUrl, showToastSuccess]);
+    const getSharedUrl = async () => {
+        const response = await createShareUrl({
+            path: url?.pathname ?? location.pathname,
+            params: url?.search ?? location.search,
+        });
+        return response.shareUrl;
+    };
+    const { handleCopy, copied } = useAsyncClipboard(getSharedUrl);
 
     return (
-        <ShareLink
-            onClick={() => {
-                const shareUrl = {
-                    path: location.pathname,
-                    params: location.search,
-                };
-                createShareUrl(shareUrl);
-            }}
+        <ActionIcon
+            variant="default"
+            onClick={handleCopy}
             disabled={isDisabled}
-            icon="link"
-        />
+            color="gray"
+        >
+            <MantineIcon
+                icon={copied ? IconCheck : IconLink}
+                color={copied ? 'green' : undefined}
+            />
+        </ActionIcon>
     );
 };
 

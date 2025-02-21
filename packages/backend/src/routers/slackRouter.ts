@@ -1,20 +1,30 @@
-import {
-    ForbiddenError,
-    NotFoundError,
-    SlackSettings,
-} from '@lightdash/common';
+import { NotFoundError } from '@lightdash/common';
 import { ExpressReceiver } from '@slack/bolt';
 import express from 'express';
-import fs from 'fs';
 import path from 'path';
-import { analytics } from '../analytics/client';
 import { LightdashAnalytics } from '../analytics/LightdashAnalytics';
 import { slackOptions } from '../clients/Slack/SlackOptions';
+import { lightdashConfig } from '../config/lightdashConfig';
 import {
     isAuthenticated,
     unauthorisedInDemo,
 } from '../controllers/authentication';
-import { slackAuthenticationModel } from '../models/models';
+
+const fs = require('fs');
+
+// TODO: to be removed once this is refactored. https://github.com/lightdash/lightdash/issues/9174
+const analytics = new LightdashAnalytics({
+    lightdashConfig,
+    writeKey: lightdashConfig.rudder.writeKey || 'notrack',
+    dataPlaneUrl: lightdashConfig.rudder.dataPlaneUrl
+        ? lightdashConfig.rudder.dataPlaneUrl
+        : 'notrack',
+    options: {
+        enable:
+            lightdashConfig.rudder.writeKey &&
+            lightdashConfig.rudder.dataPlaneUrl,
+    },
+});
 
 export const slackRouter = express.Router({ mergeParams: true });
 
@@ -25,27 +35,11 @@ slackRouter.get(
 
     async (req, res, next) => {
         try {
-            const organizationUuid = req.user?.organizationUuid;
-            if (!organizationUuid) throw new ForbiddenError();
-            const slackAuth =
-                await slackAuthenticationModel.getInstallationFromOrganizationUuid(
-                    organizationUuid,
-                );
-            if (slackAuth === undefined) {
-                res.status(404).send(
-                    `Could not find an installation for organizationUuid ${organizationUuid}`,
-                );
-                return;
-            }
-            const response: SlackSettings = {
-                organizationUuid,
-                slackTeamName: slackAuth.slackTeamName,
-                createdAt: slackAuth.createdAt,
-                scopes: slackAuth.scopes,
-            };
             res.json({
                 status: 'ok',
-                results: response,
+                results: await req.services
+                    .getSlackIntegrationService()
+                    .getInstallationFromOrganizationUuid(req.user!),
             });
         } catch (error) {
             next(error);
@@ -54,20 +48,25 @@ slackRouter.get(
 );
 
 slackRouter.get(
-    '/image/:imageId',
+    '/image/:nanoId',
 
     async (req, res, next) => {
         try {
-            if (!req.params.imageId.startsWith('slack-image')) {
-                throw new NotFoundError(
-                    `Slack image not found ${req.params.imageId}`,
-                );
+            const { nanoId } = req.params;
+            const { path: filePath } = await req.services
+                .getDownloadFileService()
+                .getDownloadFile(nanoId);
+            const filename = path.basename(filePath);
+            const normalizedPath = path.resolve('/tmp/', filename);
+            if (!normalizedPath.startsWith('/tmp/')) {
+                throw new NotFoundError(`File not found ${filename}`);
             }
-            const filePath = path.join('/tmp', req.params.imageId);
-            if (!fs.existsSync(filePath)) {
-                throw new NotFoundError(`File not found ${req.params.imageId}`);
+            if (!fs.existsSync(normalizedPath)) {
+                throw new NotFoundError(`File not found: ${filename}`);
             }
-            res.sendFile(filePath);
+            res.set('Content-Type', 'image/png');
+            res.set('Content-Disposition', `inline; filename="${filename}"`);
+            res.sendFile(normalizedPath);
         } catch (error) {
             next(error);
         }
@@ -81,19 +80,9 @@ slackRouter.delete(
 
     async (req, res, next) => {
         try {
-            analytics.track({
-                event: 'share_slack.delete',
-                userId: req.user?.userUuid,
-                properties: {
-                    organizationUuid: req.params.organizationUuid,
-                },
-            });
-
-            const organizationUuid = req.user?.organizationUuid;
-            if (!organizationUuid) throw new ForbiddenError();
-            await slackAuthenticationModel.deleteInstallationFromOrganizationUuid(
-                organizationUuid,
-            );
+            await req.services
+                .getSlackIntegrationService()
+                .deleteInstallationFromOrganizationUuid(req.user!);
 
             res.json({
                 status: 'ok',
@@ -125,7 +114,7 @@ slackRouter.get(
                 event: 'share_slack.install',
                 userId: req.user?.userUuid,
                 properties: {
-                    organizationUuid: req.params.organizationUuid,
+                    organizationId: req.params.organizationUuid,
                 },
             });
 

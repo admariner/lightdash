@@ -1,8 +1,4 @@
-export enum ProjectMemberRole {
-    VIEWER = 'viewer',
-    EDITOR = 'editor',
-    ADMIN = 'admin',
-}
+import { type ProjectMemberRole } from './projectMemberRole';
 
 export type ProjectMemberProfile = {
     userUuid: string;
@@ -16,3 +12,13 @@ export type ProjectMemberProfile = {
 export type ProjectMemberProfileUpdate = Partial<
     Pick<ProjectMemberProfile, 'role'>
 >;
+
+export type ApiProjectAccessListResponse = {
+    status: 'ok';
+    results: ProjectMemberProfile[];
+};
+
+export type ApiGetProjectMemberResponse = {
+    status: 'ok';
+    results: ProjectMemberProfile;
+};

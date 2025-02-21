@@ -1,7 +1,13 @@
-import { Ability, ForcedSubject } from '@casl/ability';
-import { OrganizationMemberProfile } from '../types/organizationMemberProfile';
+import { type Ability, type ForcedSubject } from '@casl/ability';
+import { type OrganizationMemberProfile } from '../types/organizationMemberProfile';
 
-type Action = 'manage' | 'update' | 'view' | 'create' | 'delete';
+export type AbilityAction =
+    | 'manage'
+    | 'update'
+    | 'view'
+    | 'create'
+    | 'delete'
+    | 'promote';
 
 interface Project {
     organizationUuid: string;
@@ -26,10 +32,29 @@ type Subject =
     | 'Job'
     | 'SqlRunner'
     | 'Analytics'
+    | 'Explore'
+    | 'UnderlyingData'
+    | 'ExportCsv'
+    | 'CsvJobResult'
+    | 'PinnedItems'
+    | 'Validation'
+    | 'Group'
+    | 'ChangeCsvResults'
+    | 'ScheduledDeliveries'
+    | 'DashboardComments'
+    | 'CustomSql'
+    | 'CompileProject'
+    | 'SemanticViewer'
+    | 'VirtualView'
+    | 'Tags'
+    | 'PersonalAccessToken'
+    | 'MetricsTree'
+    | 'SpotlightTableConfig'
+    | 'ContentAsCode'
     | 'all';
 
-type PossibleAbilities = [
-    Action,
+export type PossibleAbilities = [
+    AbilityAction,
     Subject | ForcedSubject<Exclude<Subject, 'all'>>,
 ];
 

@@ -1,37 +1,48 @@
-import { Explore, ExploreError } from '@lightdash/common';
+import { SupportedDbtVersions } from '@lightdash/common';
 import { WarehouseClient } from '@lightdash/warehouses';
-import { DbtCloudV2RpcClient } from '../dbt/dbtCloudV2RpcClient';
-import { CachedWarehouse } from '../types';
+import { LightdashAnalytics } from '../analytics/LightdashAnalytics';
+import { DbtMetadataApiClient } from '../dbt/DbtMetadataApiClient';
+import { CachedWarehouse, ProjectAdapter } from '../types';
 import { DbtBaseProjectAdapter } from './dbtBaseProjectAdapter';
 
 type DbtCloudideProjectAdapterArgs = {
     warehouseClient: WarehouseClient;
-    accountId: string | number;
+    discoveryApiEndpoint: string | undefined;
     environmentId: string | number;
-    projectId: string | number;
     apiKey: string;
     cachedWarehouse: CachedWarehouse;
+    dbtVersion: SupportedDbtVersions;
+    tags: string[] | undefined;
+    analytics?: LightdashAnalytics;
 };
 
-export class DbtCloudIdeProjectAdapter extends DbtBaseProjectAdapter {
+export class DbtCloudIdeProjectAdapter
+    extends DbtBaseProjectAdapter
+    implements ProjectAdapter
+{
     constructor({
         warehouseClient,
-        accountId,
         environmentId,
-        projectId,
         apiKey,
         cachedWarehouse,
+        dbtVersion,
+        discoveryApiEndpoint,
+        tags,
+        analytics,
     }: DbtCloudideProjectAdapterArgs) {
-        const rpcClient = new DbtCloudV2RpcClient(
-            accountId,
+        const dbtClient = new DbtMetadataApiClient({
             environmentId,
-            projectId,
-            apiKey,
+            bearerToken: apiKey,
+            discoveryApiEndpoint,
+            tags,
+        });
+        super(
+            dbtClient,
+            warehouseClient,
+            cachedWarehouse,
+            dbtVersion,
+            undefined,
+            analytics,
         );
-        super(rpcClient, warehouseClient, cachedWarehouse);
-    }
-
-    public async compileAllExplores(): Promise<(Explore | ExploreError)[]> {
-        return super.compileAllExplores(false);
     }
 }

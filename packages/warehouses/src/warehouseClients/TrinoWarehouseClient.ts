@@ -1,22 +1,24 @@
 import {
+    AnyType,
     CreateTrinoCredentials,
     DimensionType,
+    getErrorMessage,
     Metric,
     MetricType,
+    SupportedDbtAdapter,
     WarehouseConnectionError,
     WarehouseQueryError,
-    WeekDay,
+    WarehouseResults,
 } from '@lightdash/common';
 import {
     BasicAuth,
     ConnectionOptions,
     Iterator,
-    QueryData,
     QueryResult,
     Trino,
 } from 'trino-client';
-import { WarehouseCatalog, WarehouseClient } from '../types';
-import { getDefaultMetricSql } from '../utils/sql';
+import { WarehouseCatalog } from '../types';
+import WarehouseBaseClient from './WarehouseBaseClient';
 
 export enum TrinoTypes {
     BOOLEAN = 'boolean',
@@ -125,10 +127,13 @@ const catalogToSchema = (results: string[][][]): WarehouseCatalog => {
     return warehouseCatalog;
 };
 
-const resultHandler = (schema: { [key: string]: any }[], data: any[][]) => {
+const resultHandler = (
+    schema: { [key: string]: AnyType }[],
+    data: AnyType[][],
+) => {
     const s: string[] = schema.map((e) => e.name);
     return data.map((i) => {
-        const item: { [key: string]: any } = {};
+        const item: { [key: string]: AnyType } = {};
         i.map((column, index) => {
             const name: string = s[index];
             item[name] = column;
@@ -138,16 +143,11 @@ const resultHandler = (schema: { [key: string]: any }[], data: any[][]) => {
     });
 };
 
-export class TrinoWarehouseClient implements WarehouseClient {
-    credentials: CreateTrinoCredentials;
-
+export class TrinoWarehouseClient extends WarehouseBaseClient<CreateTrinoCredentials> {
     connectionOptions: ConnectionOptions;
 
-    startOfWeek: WeekDay | null | undefined;
-
     constructor(credentials: CreateTrinoCredentials) {
-        this.credentials = credentials;
-        this.startOfWeek = credentials.startOfWeek;
+        super(credentials);
         this.connectionOptions = {
             auth: new BasicAuth(credentials.user, credentials.password),
             catalog: credentials.dbname,
@@ -156,18 +156,14 @@ export class TrinoWarehouseClient implements WarehouseClient {
         };
     }
 
-    getStartOfWeek() {
-        return this.startOfWeek;
-    }
-
     private async getSession() {
         const client = Trino;
 
         let session: Trino;
         try {
             session = await client.create(this.connectionOptions);
-        } catch (e: any) {
-            throw new WarehouseConnectionError(e.message);
+        } catch (e: AnyType) {
+            throw new WarehouseConnectionError(getErrorMessage(e));
         }
 
         return {
@@ -178,29 +174,43 @@ export class TrinoWarehouseClient implements WarehouseClient {
         };
     }
 
-    async runQuery(sql: string) {
+    async streamQuery(
+        sql: string,
+        streamCallback: (data: WarehouseResults) => void,
+        options: {
+            tags?: Record<string, string>;
+            timezone?: string;
+        },
+    ): Promise<void> {
         const { session, close } = await this.getSession();
         let query: Iterator<QueryResult>;
         try {
-            query = await session.query(sql);
+            let alteredQuery = sql;
+            if (options?.tags) {
+                alteredQuery = `${alteredQuery}\n-- ${JSON.stringify(
+                    options?.tags,
+                )}`;
+            }
+            if (options?.timezone) {
+                console.debug(`Setting Trino timezone to ${options?.timezone}`);
+                await session.query(`SET TIME ZONE '${options?.timezone}'`);
+            }
+            query = await session.query(alteredQuery);
 
-            const queryResult = await query.next();
+            let queryResult = await query.next();
 
             if (queryResult.value.error) {
                 throw new WarehouseQueryError(
-                    queryResult.value.error.message ??
+                    getErrorMessage(queryResult.value.error) ??
                         'Unexpected error in query execution',
                 );
             }
-
-            const result: QueryData = queryResult.value.data ?? [];
 
             const schema: {
                 name: string;
                 type: string;
                 typeSignature: { rawType: string };
             }[] = queryResult.value.columns ?? [];
-
             const fields = schema.reduce(
                 (acc, column) => ({
                     ...acc,
@@ -213,16 +223,27 @@ export class TrinoWarehouseClient implements WarehouseClient {
                 {},
             );
 
-            return { fields, rows: resultHandler(schema, result) };
-        } catch (e: any) {
-            throw new WarehouseQueryError(e.message);
+            // stream initial data
+            streamCallback({
+                fields,
+                rows: resultHandler(schema, queryResult.value.data ?? []),
+            });
+            // Using `await` in this loop ensures data chunks are fetched and processed sequentially.
+            // This maintains order and data integrity.
+            while (!queryResult.done) {
+                // eslint-disable-next-line no-await-in-loop
+                queryResult = await query.next();
+                // stream next chunk of data
+                streamCallback({
+                    fields,
+                    rows: resultHandler(schema, queryResult.value.data ?? []),
+                });
+            }
+        } catch (e: AnyType) {
+            throw new WarehouseQueryError(getErrorMessage(e));
         } finally {
             await close();
         }
-    }
-
-    async test(): Promise<void> {
-        await this.runQuery(`SELECT 1`);
     }
 
     async getCatalog(requests: TableInfo[]): Promise<WarehouseCatalog> {
@@ -237,10 +258,10 @@ export class TrinoWarehouseClient implements WarehouseClient {
                     query = await session.query(queryTableSchema(request));
                     const result = (await query.next()).value.data ?? [];
                     return result;
-                } catch (e: any) {
-                    throw new WarehouseQueryError(e.message);
+                } catch (e: AnyType) {
+                    throw new WarehouseQueryError(getErrorMessage(e));
                 } finally {
-                    if (query) close();
+                    if (query) void close();
                 }
             });
 
@@ -251,16 +272,16 @@ export class TrinoWarehouseClient implements WarehouseClient {
         return catalogToSchema(results);
     }
 
-    getFieldQuoteChar() {
-        return '"';
-    }
-
     getStringQuoteChar() {
         return "'";
     }
 
     getEscapeStringQuoteChar() {
         return "'";
+    }
+
+    getAdapterType(): SupportedDbtAdapter {
+        return SupportedDbtAdapter.TRINO;
     }
 
     getMetricSql(sql: string, metric: Metric) {
@@ -272,7 +293,84 @@ export class TrinoWarehouseClient implements WarehouseClient {
             case MetricType.MEDIAN:
                 return `APPROX_PERCENTILE(${sql},0.5)`;
             default:
-                return getDefaultMetricSql(sql, metric.type);
+                return super.getMetricSql(sql, metric);
         }
+    }
+
+    private sanitizeInput(sql: string) {
+        return sql.replaceAll(
+            this.getStringQuoteChar(),
+            this.getEscapeStringQuoteChar() + this.getStringQuoteChar(),
+        );
+    }
+
+    async getTables(
+        schema?: string,
+        tags?: Record<string, string>,
+    ): Promise<WarehouseCatalog> {
+        const schemaFilter = schema
+            ? `AND table_schema = '${this.sanitizeInput(schema)}'`
+            : '';
+        const query = `
+            SELECT table_catalog, table_schema, table_name
+            FROM information_schema.tables
+            WHERE table_type = 'BASE TABLE' 
+            ${schemaFilter}
+            ORDER BY 1,2,3
+        `;
+        const { rows } = await this.runQuery(query, tags);
+        return this.parseWarehouseCatalog(rows, convertDataTypeToDimensionType);
+    }
+
+    async getFields(
+        tableName: string,
+        schema?: string,
+        database?: string,
+        tags?: Record<string, string>,
+    ): Promise<WarehouseCatalog> {
+        const query = `
+            SELECT table_catalog,
+                   table_schema,
+                   table_name,
+                   column_name, 
+                   data_type
+            FROM information_schema.columns
+            WHERE table_name = '${this.sanitizeInput(tableName)}'
+            ${
+                schema
+                    ? `AND table_schema = '${this.sanitizeInput(schema)}'`
+                    : ''
+            }
+            ${
+                database
+                    ? `AND table_catalog = '${this.sanitizeInput(database)}'`
+                    : ''
+            }
+        `;
+        const { rows } = await this.runQuery(query, tags);
+
+        return this.parseWarehouseCatalog(rows, convertDataTypeToDimensionType);
+    }
+
+    async getAllTables() {
+        const databaseName = this.connectionOptions.catalog;
+        const whereSql = databaseName
+            ? `AND table_catalog = '${this.sanitizeInput(databaseName)}'`
+            : '';
+        const filterSystemTables = `AND table_schema NOT IN ('information_schema', 'pg_catalog')`;
+        const query = `
+            SELECT table_catalog, table_schema, table_name
+            FROM information_schema.tables
+            WHERE table_type = 'BASE TABLE'
+                ${whereSql}
+                ${filterSystemTables}
+            ORDER BY 1, 2, 3
+        `;
+        const { rows } = await this.runQuery(query, {}, undefined);
+        return rows.map((row) => ({
+            database: row.table_catalog,
+            schema: row.table_schema,
+            table: row.table_name,
+        }));
     }
 }

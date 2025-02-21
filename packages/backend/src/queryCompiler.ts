@@ -5,28 +5,15 @@ import {
     CompiledTableCalculation,
     CompileError,
     convertAdditionalMetric,
+    convertFieldRefToFieldId,
     Explore,
     ExploreCompiler,
-    FieldId,
+    getFieldQuoteChar,
     lightdashVariablePattern,
     MetricQuery,
     TableCalculation,
     WarehouseClient,
 } from '@lightdash/common';
-
-const resolveQueryFieldReference = (ref: string): FieldId => {
-    const parts = ref.split('.');
-    if (parts.length !== 2) {
-        throw new CompileError(
-            `Table calculation contains an invalid reference: ${ref}. References must be of the format "table.field"`,
-            {},
-        );
-    }
-    const [tableName, fieldName] = parts;
-    const fieldId = `${tableName}_${fieldName}`;
-
-    return fieldId;
-};
 
 const compileTableCalculation = (
     tableCalculation: TableCalculation,
@@ -42,7 +29,7 @@ const compileTableCalculation = (
     const compiledSql = tableCalculation.sql.replace(
         lightdashVariablePattern,
         (_, p1) => {
-            const fieldId = resolveQueryFieldReference(p1);
+            const fieldId = convertFieldRefToFieldId(p1);
             if (validFieldIds.includes(fieldId)) {
                 return `${quoteChar}${fieldId}${quoteChar}`;
             }
@@ -101,7 +88,7 @@ export const compileMetricQuery = ({
     metricQuery,
     warehouseClient,
 }: CompileMetricQueryArgs): CompiledMetricQuery => {
-    const fieldQuoteChar = warehouseClient.getFieldQuoteChar();
+    const fieldQuoteChar = getFieldQuoteChar(warehouseClient.credentials.type);
     const compiledTableCalculations = metricQuery.tableCalculations.map(
         (tableCalculation) =>
             compileTableCalculation(
@@ -118,9 +105,17 @@ export const compileMetricQuery = ({
                 warehouseClient,
             }),
     );
+
+    const compiler = new ExploreCompiler(warehouseClient);
+    const compiledCustomDimensions = (metricQuery.customDimensions || []).map(
+        (customDimension) =>
+            compiler.compileCustomDimension(customDimension, explore.tables),
+    );
+
     return {
         ...metricQuery,
         compiledTableCalculations,
         compiledAdditionalMetrics,
+        compiledCustomDimensions,
     };
 };

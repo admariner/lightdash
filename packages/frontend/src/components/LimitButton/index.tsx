@@ -1,45 +1,62 @@
-import { Position } from '@blueprintjs/core';
-import { Classes, Popover2, Tooltip2 } from '@blueprintjs/popover2';
-import React, { FC, memo } from 'react';
+import { Button, Popover, type MantineSize } from '@mantine/core';
+import { useClickOutside, useDisclosure } from '@mantine/hooks';
+import { IconChevronDown } from '@tabler/icons-react';
+import { memo, type FC } from 'react';
+import MantineIcon from '../common/MantineIcon';
 import LimitForm from './LimitForm';
-import LimitTag from './LimitTag';
 
 export type Props = {
+    size?: MantineSize;
     disabled?: boolean;
+    maxLimit: number;
     limit: number;
-    isEditMode: boolean;
     onLimitChange: (value: number) => void;
 };
 
 const LimitButton: FC<Props> = memo(
-    ({ disabled, isEditMode, limit, onLimitChange }) => {
-        return isEditMode ? (
-            <Popover2
-                content={
-                    <LimitForm limit={limit} onLimitChange={onLimitChange} />
-                }
-                popoverClassName={Classes.POPOVER2_CONTENT_SIZING}
-                position={Position.BOTTOM}
+    ({ size, disabled, maxLimit, limit, onLimitChange }) => {
+        const [opened, { open, close }] = useDisclosure(false);
+        const ref = useClickOutside(
+            () => setTimeout(() => close(), 0),
+            ['mouseup', 'touchend'],
+        );
+
+        const handleLimitChange = (value: number) => {
+            onLimitChange(value);
+            close();
+        };
+
+        return (
+            <Popover
+                withinPortal
                 disabled={disabled}
-                lazy
+                opened={opened}
+                position="bottom-end"
+                withArrow
+                shadow="md"
+                offset={2}
+                arrowOffset={10}
             >
-                <LimitTag
-                    limit={limit}
-                    disabled={disabled}
-                    isEditMode={isEditMode}
-                />
-            </Popover2>
-        ) : (
-            <Tooltip2
-                content="You must be in 'edit' or 'explore' mode to update the limit"
-                position={Position.BOTTOM}
-            >
-                <LimitTag
-                    limit={limit}
-                    disabled={disabled}
-                    isEditMode={isEditMode}
-                />
-            </Tooltip2>
+                <Popover.Target>
+                    <Button
+                        size={size}
+                        p="xs"
+                        disabled={disabled}
+                        onClick={opened ? undefined : open}
+                    >
+                        <MantineIcon icon={IconChevronDown} size="sm" />
+                    </Button>
+                </Popover.Target>
+
+                <Popover.Dropdown>
+                    <LimitForm
+                        ref={ref}
+                        maxLimit={maxLimit}
+                        limit={limit}
+                        onLimitChange={handleLimitChange}
+                    />
+                </Popover.Dropdown>
+            </Popover>
         );
     },
 );

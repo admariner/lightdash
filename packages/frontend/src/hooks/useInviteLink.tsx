@@ -1,10 +1,9 @@
 import {
-    ApiError,
-    CreateInviteLink,
-    formatTimestamp,
-    InviteLink,
+    type ApiError,
+    type CreateInviteLink,
+    type InviteLink,
 } from '@lightdash/common';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { lightdashApi } from '../api';
 import useToaster from './toaster/useToaster';
 
@@ -21,13 +20,6 @@ const createInviteQuery = async (
         expiresAt: new Date(response.expiresAt),
     };
 };
-
-const revokeInvitesQuery = async () =>
-    lightdashApi<undefined>({
-        url: `/invite-links`,
-        method: 'DELETE',
-        body: undefined,
-    });
 
 const createInviteWith3DayExpiryQuery = async (
     createInvite: Omit<CreateInviteLink, 'expiresAt'>,
@@ -47,51 +39,33 @@ const inviteLinkQuery = async (inviteCode: string) =>
         body: undefined,
     });
 
-export const useInviteLink = (inviteCode: string) =>
+export const useInviteLink = (inviteCode: string | undefined) =>
     useQuery<InviteLink, ApiError>({
         queryKey: ['invite_link', inviteCode],
-        queryFn: () => inviteLinkQuery(inviteCode),
+        queryFn: () => inviteLinkQuery(inviteCode!),
+        enabled: inviteCode !== undefined,
     });
 
 export const useCreateInviteLinkMutation = () => {
     const queryClient = useQueryClient();
-    const { showToastError, showToastSuccess } = useToaster();
+    const { showToastApiError, showToastSuccess } = useToaster();
     return useMutation<
         InviteLink,
         ApiError,
         Omit<CreateInviteLink, 'expiresAt'>
     >(createInviteWith3DayExpiryQuery, {
         mutationKey: ['invite_link'],
-        onError: (error1) => {
-            const [title, ...rest] = error1.error.message.split('\n');
-            showToastError({
-                title,
-                subtitle: rest.join('\n'),
+        onError: ({ error }) => {
+            showToastApiError({
+                title: 'Failed to create invite link',
+                apiError: error,
             });
         },
-        onSuccess: async (data) => {
+        onSuccess: async () => {
             await queryClient.invalidateQueries(['onboarding-status']);
             await queryClient.refetchQueries(['organization_users']);
             showToastSuccess({
                 title: 'Created new invite link',
-            });
-        },
-    });
-};
-
-export const useRevokeInvitesMutation = () => {
-    const { showToastSuccess, showToastError } = useToaster();
-    return useMutation<undefined, ApiError>(revokeInvitesQuery, {
-        mutationKey: ['invite_link_revoke'],
-        onSuccess: async () => {
-            showToastSuccess({
-                title: `All invites were revoked`,
-            });
-        },
-        onError: (error) => {
-            showToastError({
-                title: `Failed to revoke invites`,
-                subtitle: error.error.message,
             });
         },
     });

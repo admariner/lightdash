@@ -1,56 +1,46 @@
 import {
-    ApiQueryResults,
-    ChartConfig,
     ChartType,
-    Explore,
+    assertUnreachable,
+    isDimension,
+    type ApiQueryResults,
+    type ChartConfig,
+    type DashboardFilters,
+    type PivotValue,
+    type TableCalculationMetadata,
 } from '@lightdash/common';
-import EChartsReact from 'echarts-for-react';
-import React, {
-    createContext,
-    FC,
-    RefObject,
+import type EChartsReact from 'echarts-for-react';
+import isEqual from 'lodash/isEqual';
+import {
     useCallback,
-    useContext,
     useEffect,
     useMemo,
     useRef,
     useState,
+    type FC,
+    type RefObject,
 } from 'react';
-import useCartesianChartConfig from '../../hooks/cartesianChartConfig/useCartesianChartConfig';
-import { EChartSeries } from '../../hooks/echarts/useEcharts';
-import useTableConfig from '../../hooks/tableVisualization/useTableConfig';
-import useBigNumberConfig from '../../hooks/useBigNumberConfig';
+import { type CartesianTypeOptions } from '../../hooks/cartesianChartConfig/useCartesianChartConfig';
+import { type EChartSeries } from '../../hooks/echarts/useEchartsCartesianConfig';
+import { type SeriesLike } from '../../hooks/useChartColorConfig/types';
+import { useChartColorConfig } from '../../hooks/useChartColorConfig/useChartColorConfig';
+import {
+    calculateSeriesLikeIdentifier,
+    isGroupedSeries,
+} from '../../hooks/useChartColorConfig/utils';
 import usePivotDimensions from '../../hooks/usePivotDimensions';
-import { EchartSeriesClickEvent } from '../SimpleChart';
-
-type VisualizationContext = {
-    minimal: boolean;
-    chartRef: RefObject<EChartsReact>;
-    chartType: ChartType;
-    cartesianConfig: ReturnType<typeof useCartesianChartConfig>;
-    bigNumberConfig: ReturnType<typeof useBigNumberConfig>;
-    tableConfig: ReturnType<typeof useTableConfig>;
-    pivotDimensions: string[] | undefined;
-    explore: Explore | undefined;
-    originalData: ApiQueryResults['rows'];
-    resultsData: ApiQueryResults | undefined;
-    isLoading: boolean;
-    columnOrder: string[];
-    isSqlRunner: boolean;
-    onSeriesContextMenu?: (
-        e: EchartSeriesClickEvent,
-        series: EChartSeries[],
-    ) => void;
-    setChartType: (value: ChartType) => void;
-    setPivotDimensions: (value: string[] | undefined) => void;
-};
-
-const Context = createContext<VisualizationContext | undefined>(undefined);
+import { type EchartSeriesClickEvent } from '../SimpleChart';
+import VisualizationBigNumberConfig from './VisualizationBigNumberConfig';
+import VisualizationCartesianConfig from './VisualizationConfigCartesian';
+import VisualizationConfigFunnel from './VisualizationConfigFunnel';
+import VisualizationPieConfig from './VisualizationConfigPie';
+import VisualizationTableConfig from './VisualizationConfigTable';
+import VisualizationCustomConfig from './VisualizationCustomConfig';
+import Context from './context';
+import { type useVisualizationContext } from './useVisualizationContext';
 
 type Props = {
     minimal?: boolean;
-    chartType: ChartType;
-    initialChartConfig: ChartConfig | undefined;
+    chartConfig: ChartConfig;
     initialPivotDimensions: string[] | undefined;
     resultsData: ApiQueryResults | undefined;
     isLoading: boolean;
@@ -59,55 +49,67 @@ type Props = {
         e: EchartSeriesClickEvent,
         series: EChartSeries[],
     ) => void;
-    onChartConfigChange?: (value: ChartConfig['config']) => void;
     onChartTypeChange?: (value: ChartType) => void;
+    onChartConfigChange?: (value: ChartConfig) => void;
     onPivotDimensionsChange?: (value: string[] | undefined) => void;
-    explore: Explore | undefined;
+    pivotTableMaxColumnLimit: number;
+    savedChartUuid?: string;
+    dashboardFilters?: DashboardFilters;
+    invalidateCache?: boolean;
+    colorPalette: string[];
+    tableCalculationsMetadata?: TableCalculationMetadata[];
+    setEchartsRef?: (ref: RefObject<EChartsReact | null>) => void;
 };
 
-export const VisualizationProvider: FC<Props> = ({
+const VisualizationProvider: FC<React.PropsWithChildren<Props>> = ({
     minimal = false,
-    initialChartConfig,
-    chartType,
     initialPivotDimensions,
     resultsData,
     isLoading,
     columnOrder,
-    onSeriesContextMenu,
+    pivotTableMaxColumnLimit,
+    chartConfig,
     onChartConfigChange,
+    onSeriesContextMenu,
     onChartTypeChange,
     onPivotDimensionsChange,
-    explore,
     children,
+    savedChartUuid,
+    dashboardFilters,
+    invalidateCache,
+    colorPalette,
+    tableCalculationsMetadata,
+    setEchartsRef,
 }) => {
-    const chartRef = useRef<EChartsReact>(null);
+    const itemsMap = useMemo(() => {
+        return resultsData?.fields;
+    }, [resultsData]);
 
+    const chartRef = useRef<EChartsReact | null>(null);
+    useEffect(() => {
+        if (setEchartsRef)
+            setEchartsRef(chartRef as RefObject<EChartsReact | null>);
+    }, [chartRef, setEchartsRef]);
     const [lastValidResultsData, setLastValidResultsData] =
         useState<ApiQueryResults>();
-    useEffect(() => {
-        if (!!resultsData) {
-            setLastValidResultsData(resultsData);
-        }
-    }, [resultsData]);
 
     const { validPivotDimensions, setPivotDimensions } = usePivotDimensions(
         initialPivotDimensions,
         lastValidResultsData,
     );
+
     const setChartType = useCallback(
-        (value: ChartType) => {
-            onChartTypeChange?.(value);
-        },
+        (value: ChartType) => onChartTypeChange?.(value),
         [onChartTypeChange],
     );
 
-    const bigNumberConfig = useBigNumberConfig(
-        initialChartConfig?.type === ChartType.BIG_NUMBER
-            ? initialChartConfig.config
-            : undefined,
-        lastValidResultsData,
-        explore,
-    );
+    const { calculateKeyColorAssignment, calculateSeriesColorAssignment } =
+        useChartColorConfig({ colorPalette });
+
+    // cartesian config related
+    const [stacking, setStacking] = useState<boolean>();
+    const [cartesianType, setCartesianType] = useState<CartesianTypeOptions>();
+    // --
 
     // If we don't toggle any fields, (eg: when you `explore from here`) columnOrder on tableConfig might be empty
     // so we initialize it with the fields from resultData
@@ -130,115 +132,264 @@ export const VisualizationProvider: FC<Props> = ({
         }
     }, [resultsData?.metricQuery, columnOrder]);
 
-    const tableConfig = useTableConfig(
-        initialChartConfig?.type === ChartType.TABLE
-            ? initialChartConfig.config
-            : undefined,
-        lastValidResultsData,
-        explore,
-        (columnOrder = defaultColumnOrder),
-        validPivotDimensions,
+    /**
+     * Build a local set of fallback colors, used when dealing with ungrouped series.
+     *
+     * Colors are pre-calculated per-series, and re-calculated when series change.
+     */
+    const fallbackColors = useMemo<Record<string, string>>(() => {
+        if (!chartConfig?.config || chartConfig.type !== ChartType.CARTESIAN) {
+            return {};
+        }
+
+        return Object.fromEntries(
+            (chartConfig.config.eChartsConfig.series ?? []).map((series, i) => {
+                return [
+                    calculateSeriesLikeIdentifier(series).join('|'),
+                    colorPalette[i % colorPalette.length],
+                ];
+            }),
+        );
+    }, [chartConfig, colorPalette]);
+
+    const handleChartConfigChange = useCallback(
+        (newChartConfig: ChartConfig) => {
+            if (!onChartConfigChange) return;
+            if (isEqual(newChartConfig.config, chartConfig?.config)) return;
+
+            onChartConfigChange(newChartConfig);
+        },
+        [onChartConfigChange, chartConfig?.config],
     );
 
-    const { validBigNumberConfig } = bigNumberConfig;
-    const { validTableConfig } = tableConfig;
-
-    const isSqlRunner = useMemo(() => {
-        return explore?.name === 'sql_runner';
-    }, [explore?.name]);
-
-    const cartesianConfig = useCartesianChartConfig({
-        chartType,
-        initialChartConfig:
-            initialChartConfig?.type === ChartType.CARTESIAN
-                ? initialChartConfig.config
-                : undefined,
-        pivotKeys: validPivotDimensions,
-        resultsData: lastValidResultsData,
-        setPivotDimensions,
-        columnOrder: isSqlRunner ? [] : defaultColumnOrder,
-        explore: isSqlRunner ? undefined : explore,
-    });
-
-    const { validCartesianConfig } = cartesianConfig;
-
     useEffect(() => {
-        let validConfig: ChartConfig['config'];
-        switch (chartType) {
-            case ChartType.CARTESIAN:
-                validConfig = validCartesianConfig;
-                break;
-            case ChartType.BIG_NUMBER:
-                validConfig = validBigNumberConfig;
-                break;
-            case ChartType.TABLE:
-                validConfig = validTableConfig;
-                break;
-            default:
-                const never: never = chartType;
-                throw new Error(`Unexpected chart type: ${chartType}`);
-        }
-        onChartConfigChange?.(validConfig);
-    }, [
-        validCartesianConfig,
-        onChartConfigChange,
-        chartType,
-        validBigNumberConfig,
-        validTableConfig,
-    ]);
+        if (!resultsData) return;
+        setLastValidResultsData(resultsData);
+    }, [resultsData]);
 
     useEffect(() => {
         onPivotDimensionsChange?.(validPivotDimensions);
     }, [validPivotDimensions, onPivotDimensionsChange]);
 
-    const value = useMemo(
-        () => ({
-            minimal,
-            pivotDimensions: validPivotDimensions,
-            cartesianConfig,
-            bigNumberConfig,
-            tableConfig,
-            chartRef,
-            chartType,
-            explore,
-            originalData: lastValidResultsData?.rows || [],
-            resultsData: lastValidResultsData,
-            isLoading,
-            columnOrder,
-            isSqlRunner,
-            onSeriesContextMenu,
-            setChartType,
-            setPivotDimensions,
-        }),
-        [
-            minimal,
-            bigNumberConfig,
-            cartesianConfig,
-            chartType,
-            columnOrder,
-            explore,
-            isLoading,
-            isSqlRunner,
-            lastValidResultsData,
-            onSeriesContextMenu,
-            setChartType,
-            setPivotDimensions,
-            tableConfig,
-            validPivotDimensions,
-        ],
+    /**
+     * Gets a shared color for a given group name.
+     * Used in pie charts
+     */
+    const getGroupColor = useCallback(
+        (groupPrefix: string, identifier: string) => {
+            if (itemsMap) {
+                const dimension = itemsMap[groupPrefix];
+                if (dimension && isDimension(dimension)) {
+                    const colors = dimension.colors;
+                    if (colors && colors[identifier]) {
+                        return colors[identifier];
+                    }
+                }
+            }
+
+            return calculateKeyColorAssignment(groupPrefix, identifier);
+        },
+        [calculateKeyColorAssignment, itemsMap],
     );
 
-    return <Context.Provider value={value}>{children}</Context.Provider>;
-};
+    /**
+     * Gets a shared color for a given series.
+     */
+    const getSeriesColor = useCallback(
+        (seriesLike: SeriesLike) => {
+            if (seriesLike.color) return seriesLike.color;
 
-export function useVisualizationContext(): VisualizationContext {
-    const context = useContext(Context);
-    if (context === undefined) {
-        throw new Error(
-            'useVisualizationContext must be used within a VisualizationProvider',
-        );
+            // Check if color is stored in metadata
+            const serieId = calculateSeriesLikeIdentifier(seriesLike).join('.');
+            const metadata =
+                chartConfig.type === ChartType.CARTESIAN
+                    ? chartConfig.config?.metadata
+                    : undefined;
+            if (metadata && metadata?.[serieId]?.color)
+                return metadata?.[serieId].color;
+
+            /** Check if color is set in the dimension metadata */
+
+            let pivot: PivotValue | undefined;
+            if ('pivotReference' in seriesLike && seriesLike.pivotReference) {
+                pivot = seriesLike.pivotReference.pivotValues?.[0];
+            } else if (seriesLike.encode && 'yRef' in seriesLike.encode) {
+                pivot = seriesLike.encode.yRef.pivotValues?.[0];
+            }
+            if (itemsMap && pivot) {
+                const { field, value } = pivot;
+                const dimension = itemsMap[field];
+                if (
+                    dimension &&
+                    isDimension(dimension) &&
+                    typeof value === 'string'
+                ) {
+                    const colors = dimension.colors;
+                    if (colors && colors[value]) {
+                        return colors[value];
+                    }
+                }
+            }
+
+            /**
+             * If this series is grouped, figure out a shared color assignment from the series;
+             * otherwise, pick a series color from the palette based on its order.
+             */
+            return isGroupedSeries(seriesLike)
+                ? calculateSeriesColorAssignment(seriesLike)
+                : fallbackColors[
+                      // Note: we don't use getSeriesId since we may not be dealing with a Series type here
+                      calculateSeriesLikeIdentifier(seriesLike).join('|')
+                  ];
+        },
+        [calculateSeriesColorAssignment, fallbackColors, chartConfig, itemsMap],
+    );
+
+    const value: Omit<
+        ReturnType<typeof useVisualizationContext>,
+        'visualizationConfig'
+    > = {
+        minimal,
+        pivotDimensions: validPivotDimensions,
+        chartRef,
+        resultsData: lastValidResultsData,
+        isLoading,
+        columnOrder,
+        itemsMap,
+        setStacking,
+        setCartesianType,
+        onSeriesContextMenu,
+        setChartType,
+        setPivotDimensions,
+        colorPalette,
+        getGroupColor,
+        getSeriesColor,
+    };
+
+    switch (chartConfig.type) {
+        case ChartType.CARTESIAN:
+            return (
+                <VisualizationCartesianConfig
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    validPivotDimensions={validPivotDimensions}
+                    columnOrder={defaultColumnOrder}
+                    initialChartConfig={chartConfig.config}
+                    stacking={stacking}
+                    cartesianType={cartesianType}
+                    setPivotDimensions={setPivotDimensions}
+                    onChartConfigChange={handleChartConfigChange}
+                    colorPalette={colorPalette}
+                    tableCalculationsMetadata={tableCalculationsMetadata}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationCartesianConfig>
+            );
+        case ChartType.PIE:
+            return (
+                <VisualizationPieConfig
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                    colorPalette={colorPalette}
+                    tableCalculationsMetadata={tableCalculationsMetadata}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationPieConfig>
+            );
+        case ChartType.FUNNEL:
+            return (
+                <VisualizationConfigFunnel
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                    colorPalette={colorPalette}
+                    tableCalculationsMetadata={tableCalculationsMetadata}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationConfigFunnel>
+            );
+        case ChartType.BIG_NUMBER:
+            return (
+                <VisualizationBigNumberConfig
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                    tableCalculationsMetadata={tableCalculationsMetadata}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationBigNumberConfig>
+            );
+        case ChartType.TABLE:
+            return (
+                <VisualizationTableConfig
+                    itemsMap={itemsMap}
+                    resultsData={lastValidResultsData}
+                    columnOrder={defaultColumnOrder}
+                    validPivotDimensions={validPivotDimensions}
+                    pivotTableMaxColumnLimit={pivotTableMaxColumnLimit}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                    savedChartUuid={savedChartUuid}
+                    dashboardFilters={dashboardFilters}
+                    invalidateCache={invalidateCache}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationTableConfig>
+            );
+        case ChartType.CUSTOM:
+            return (
+                <VisualizationCustomConfig
+                    resultsData={lastValidResultsData}
+                    itemsMap={itemsMap}
+                    initialChartConfig={chartConfig.config}
+                    onChartConfigChange={handleChartConfigChange}
+                >
+                    {({ visualizationConfig }) => (
+                        <Context.Provider
+                            value={{ ...value, visualizationConfig }}
+                        >
+                            {children}
+                        </Context.Provider>
+                    )}
+                </VisualizationCustomConfig>
+            );
+        default:
+            return assertUnreachable(chartConfig, 'Unknown chart type');
     }
-    return context;
-}
+};
 
 export default VisualizationProvider;

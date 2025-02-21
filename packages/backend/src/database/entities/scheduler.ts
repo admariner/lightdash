@@ -1,21 +1,39 @@
+import {
+    AnyType,
+    assertUnreachable,
+    isEmailTarget,
+    isSlackTarget,
+    SchedulerEmailTarget,
+    SchedulerSlackTarget,
+} from '@lightdash/common';
 import { Knex } from 'knex';
 
 export const SchedulerTableName = 'scheduler';
 export const SchedulerSlackTargetTableName = 'scheduler_slack_target';
 export const SchedulerEmailTargetTableName = 'scheduler_email_target';
+
 export const SchedulerLogTableName = 'scheduler_log';
 
 export type SchedulerDb = {
     scheduler_uuid: string;
     name: string;
+    message?: string;
     format: string;
     created_at: Date;
     updated_at: Date;
     created_by: string;
     cron: string;
+    timezone: string | null;
     saved_chart_uuid: string | null;
     dashboard_uuid: string | null;
-    options: Record<string, any>;
+    options: Record<string, AnyType>;
+    filters: string | null;
+    custom_viewport_width: number | null;
+    thresholds: string | null;
+    enabled: boolean;
+    notification_frequency: string | null;
+    selected_tabs: string[] | null;
+    include_links: boolean;
 };
 
 export type ChartSchedulerDb = SchedulerDb & {
@@ -49,7 +67,24 @@ export type SchedulerTable = Knex.CompositeTableType<
         ChartSchedulerDb | DashboardSchedulerDB,
         'scheduler_uuid' | 'created_at'
     >,
-    Pick<SchedulerDb, 'name' | 'updated_at' | 'cron' | 'format' | 'options'>
+    | Pick<
+          SchedulerDb,
+          | 'name'
+          | 'message'
+          | 'updated_at'
+          | 'cron'
+          | 'timezone'
+          | 'format'
+          | 'options'
+          | 'filters'
+          | 'custom_viewport_width'
+          | 'thresholds'
+          | 'notification_frequency'
+          | 'selected_tabs'
+          | 'include_links'
+      >
+    | Pick<SchedulerDb, 'updated_at' | 'enabled'>
+    | Pick<SchedulerDb, 'cron'>
 >;
 
 export type SchedulerSlackTargetTable = Knex.CompositeTableType<
@@ -66,18 +101,39 @@ export type SchedulerEmailTargetTable = Knex.CompositeTableType<
 
 export type SchedulerLogDb = {
     task: string;
-    scheduler_uuid: string;
+    scheduler_uuid?: string;
     job_id: string;
     created_at: Date;
     scheduled_time: Date;
-    job_group: string;
+    job_group?: string;
     status: string;
     target: string | null;
     target_type: string | null;
-    details: Record<string, any> | null;
+    details: Record<string, AnyType> | null;
 };
 
 export type SchedulerLogTable = Knex.CompositeTableType<
     SchedulerLogDb,
     Omit<SchedulerLogDb, 'created_at'>
 >;
+
+export const getSchedulerTargetType = (
+    target: SchedulerSlackTarget | SchedulerEmailTarget,
+): {
+    schedulerTargetId: string;
+    type: 'slack' | 'email';
+} => {
+    if (isSlackTarget(target)) {
+        return {
+            schedulerTargetId: target.schedulerSlackTargetUuid,
+            type: 'slack',
+        };
+    }
+    if (isEmailTarget(target)) {
+        return {
+            schedulerTargetId: target.schedulerEmailTargetUuid,
+            type: 'email',
+        };
+    }
+    return assertUnreachable(target, 'Uknown target type');
+};

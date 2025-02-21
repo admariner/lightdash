@@ -1,22 +1,20 @@
 import {
     CreateProject,
     DbtProjectType,
-    isWeekDay,
-    Project,
     ProjectType,
     WarehouseTypes,
+    type ApiCreateProjectResults,
 } from '@lightdash/common';
 import inquirer from 'inquirer';
 import path from 'path';
 import { getConfig, setAnswer } from '../config';
 import { getDbtContext } from '../dbt/context';
-import {
-    loadDbtTarget,
-    warehouseCredentialsFromDbtTarget,
-} from '../dbt/profile';
 import GlobalState from '../globalState';
 import * as styles from '../styles';
 import { lightdashApi } from './dbt/apiClient';
+import getDbtProfileTargetName from './dbt/getDbtProfileTargetName';
+import { getDbtVersion } from './dbt/getDbtVersion';
+import getWarehouseClient from './dbt/getWarehouseClient';
 
 const askToRememberAnswer = async (): Promise<void> => {
     const answers = await inquirer.prompt([
@@ -72,25 +70,35 @@ type CreateProjectOptions = {
     profile: string | undefined;
     type: ProjectType;
     startOfWeek?: number;
+    upstreamProjectUuid?: string;
 };
 export const createProject = async (
     options: CreateProjectOptions,
-): Promise<Project | undefined> => {
+): Promise<ApiCreateProjectResults | undefined> => {
+    const dbtVersion = await getDbtVersion();
+
     const absoluteProjectPath = path.resolve(options.projectDir);
-    const absoluteProfilesPath = path.resolve(options.profilesDir);
     const context = await getDbtContext({ projectDir: absoluteProjectPath });
-    const profileName = options.profile || context.profileName;
-    const { target, name: targetName } = await loadDbtTarget({
-        profilesDir: absoluteProfilesPath,
-        profileName,
-        targetName: options.target,
+    const targetName = await getDbtProfileTargetName({
+        isDbtCloudCLI: dbtVersion.isDbtCloudCLI,
+        profilesDir: options.profilesDir,
+        profile: options.profile || context.profileName,
+        target: options.target,
     });
     const canStoreWarehouseCredentials =
         await askPermissionToStoreWarehouseCredentials();
     if (!canStoreWarehouseCredentials) {
         return undefined;
     }
-    const credentials = await warehouseCredentialsFromDbtTarget(target);
+
+    const { credentials } = await getWarehouseClient({
+        isDbtCloudCLI: dbtVersion.isDbtCloudCLI,
+        profilesDir: options.profilesDir,
+        profile: options.profile || context.profileName,
+        target: options.target,
+        startOfWeek: options.startOfWeek,
+    });
+
     if (
         credentials.type === WarehouseTypes.BIGQUERY &&
         'project_id' in credentials.keyfileContents &&
@@ -121,21 +129,19 @@ export const createProject = async (
     const project: CreateProject = {
         name: options.name,
         type: options.type,
-        warehouseConnection: {
-            ...credentials,
-            startOfWeek: isWeekDay(options.startOfWeek)
-                ? options.startOfWeek
-                : undefined,
-        },
+        warehouseConnection: credentials,
+        copyWarehouseConnectionFromUpstreamProject: dbtVersion.isDbtCloudCLI,
         dbtConnection: {
             type: DbtProjectType.NONE,
             target: targetName,
         },
+        upstreamProjectUuid: options.upstreamProjectUuid,
+        dbtVersion: dbtVersion.versionOption,
     };
-    const createdProject = await lightdashApi<Project>({
+
+    return lightdashApi<ApiCreateProjectResults>({
         method: 'POST',
         url: `/api/v1/org/projects`,
         body: JSON.stringify(project),
     });
-    return createdProject;
 };

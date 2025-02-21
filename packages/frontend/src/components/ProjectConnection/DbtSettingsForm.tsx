@@ -1,15 +1,17 @@
 import {
+    assertUnreachable,
     DbtProjectType,
     DbtProjectTypeLabels,
+    FeatureFlags,
     WarehouseTypes,
 } from '@lightdash/common';
-import { FC, useMemo, useState } from 'react';
-import { useFormContext, useWatch } from 'react-hook-form';
-import { useApp } from '../../providers/AppProvider';
+import { Anchor, Select, Stack, TextInput } from '@mantine/core';
+import { useEffect, useMemo, useState, type FC } from 'react';
+import { Controller, useFormContext, useWatch } from 'react-hook-form';
+import { useFeatureFlagEnabled } from '../../hooks/useFeatureFlagEnabled';
+import useApp from '../../providers/App/useApp';
 import FormSection from '../ReactHookForm/FormSection';
-import Input from '../ReactHookForm/Input';
 import { MultiKeyValuePairsInput } from '../ReactHookForm/MultiKeyValuePairsInput';
-import SelectField from '../ReactHookForm/Select';
 import AzureDevOpsForm from './DbtForms/AzureDevOpsForm';
 import BitBucketForm from './DbtForms/BitBucketForm';
 import DbtCloudForm from './DbtForms/DbtCloudForm';
@@ -17,11 +19,8 @@ import DbtLocalForm from './DbtForms/DbtLocalForm';
 import DbtNoneForm from './DbtForms/DbtNoneForm';
 import GithubForm from './DbtForms/GithubForm';
 import GitlabForm from './DbtForms/GitlabForm';
-import { SelectedWarehouse } from './ProjectConnectFlow/SelectWarehouse';
-import {
-    AdvancedButton,
-    AdvancedButtonWrapper,
-} from './ProjectConnection.styles';
+import FormCollapseButton from './FormCollapseButton';
+import { type SelectedWarehouse } from './ProjectConnectFlow/types';
 import { BigQuerySchemaInput } from './WarehouseForms/BigQueryForm';
 import { DatabricksSchemaInput } from './WarehouseForms/DatabricksForm';
 import { PostgresSchemaInput } from './WarehouseForms/PostgresForm';
@@ -40,7 +39,7 @@ const DbtSettingsForm: FC<DbtSettingsFormProps> = ({
     defaultType,
     selectedWarehouse,
 }) => {
-    const { resetField } = useFormContext();
+    const { resetField, register, unregister } = useFormContext();
     const type: DbtProjectType = useWatch({
         name: 'dbt.type',
         defaultValue: defaultType || DbtProjectType.GITHUB,
@@ -54,6 +53,9 @@ const DbtSettingsForm: FC<DbtSettingsFormProps> = ({
     const toggleAdvancedSettingsOpen = () =>
         setIsAdvancedSettingsOpen((open) => !open);
     const { health } = useApp();
+    const isEnabled = useFeatureFlagEnabled(
+        FeatureFlags.ShowDbtCloudProjectOption,
+    );
     const options = useMemo(() => {
         const enabledTypes = [
             DbtProjectType.GITHUB,
@@ -65,7 +67,7 @@ const DbtSettingsForm: FC<DbtSettingsFormProps> = ({
         if (health.data?.localDbtEnabled) {
             enabledTypes.push(DbtProjectType.DBT);
         }
-        if (type === DbtProjectType.DBT_CLOUD_IDE) {
+        if (isEnabled || type === DbtProjectType.DBT_CLOUD_IDE) {
             enabledTypes.push(DbtProjectType.DBT_CLOUD_IDE);
         }
 
@@ -73,11 +75,15 @@ const DbtSettingsForm: FC<DbtSettingsFormProps> = ({
             value,
             label: DbtProjectTypeLabels[value],
         }));
-    }, [health, type]);
+    }, [isEnabled, health, type]);
+
+    useEffect(() => {
+        // Reset field validation from github form
+        unregister('dbt.personal_access_token');
+    }, [type, unregister]);
 
     const form = useMemo(() => {
         resetField('dbt.host_domain');
-
         switch (type) {
             case DbtProjectType.DBT:
                 return <DbtLocalForm />;
@@ -94,12 +100,13 @@ const DbtSettingsForm: FC<DbtSettingsFormProps> = ({
             case DbtProjectType.NONE:
                 return <DbtNoneForm disabled={disabled} />;
             default: {
-                const never: never = type;
-                return null;
+                return assertUnreachable(
+                    type,
+                    `Unknown dbt project type ${type}`,
+                );
             }
         }
     }, [disabled, type, resetField]);
-
     const baseDocUrl =
         'https://docs.lightdash.com/get-started/setup-lightdash/connect-project#';
     const typeDocUrls = {
@@ -149,62 +156,93 @@ const DbtSettingsForm: FC<DbtSettingsFormProps> = ({
         <div
             style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
         >
-            <SelectField
-                name="dbt.type"
-                label="Type"
-                options={options}
-                rules={{
-                    required: 'Required field',
-                }}
-                disabled={disabled}
-                defaultValue={DbtProjectType.GITHUB}
-            />
-            {form}
-            {type !== DbtProjectType.NONE && (
-                <>
-                    <FormSection name="target">
-                        <Input
-                            name="dbt.target"
-                            label="Target name"
-                            labelHelp={
-                                <p>
-                                    <b>target</b> is the dataset/schema in your
-                                    data warehouse that Lightdash will look for
-                                    your dbt models. By default, we set this to
-                                    be the same value as you have as the default
-                                    in your profiles.yml file.
-                                </p>
-                            }
-                            disabled={disabled}
-                            placeholder="prod"
-                        />
-                        {warehouseSchemaInput}
-                    </FormSection>
-                    <FormSection
-                        name={'Advanced'}
-                        isOpen={isAdvancedSettingsOpen}
-                    >
-                        <MultiKeyValuePairsInput
-                            name="dbt.environment"
-                            label="Environment variables"
-                            documentationUrl={`${baseDocUrl}${typeDocUrls[type].env}`}
+            <Stack style={{ marginTop: '8px' }}>
+                <Controller
+                    name="dbt.type"
+                    defaultValue={DbtProjectType.GITHUB}
+                    render={({ field }) => (
+                        <Select
+                            label="Type"
+                            data={options}
+                            required
+                            name={field.name}
+                            value={field.value}
+                            onChange={field.onChange}
                             disabled={disabled}
                         />
-                        <></>
-                    </FormSection>
-                    <AdvancedButtonWrapper>
-                        <AdvancedButton
-                            icon={
-                                isAdvancedSettingsOpen
-                                    ? 'chevron-up'
-                                    : 'chevron-down'
-                            }
-                            text={`Advanced configuration options`}
+                    )}
+                />
+
+                {form}
+                {type !== DbtProjectType.NONE && (
+                    <>
+                        <FormSection name="target">
+                            <Stack style={{ marginTop: '8px' }}>
+                                <TextInput
+                                    {...register('dbt.target')}
+                                    label="Target name"
+                                    description={
+                                        <p>
+                                            <b>target</b> is the dataset/schema
+                                            in your data warehouse that
+                                            Lightdash will look for your dbt
+                                            models. By default, we set this to
+                                            be the same value as you have as the
+                                            default in your profiles.yml file.
+                                        </p>
+                                    }
+                                    disabled={disabled}
+                                    placeholder="prod"
+                                />
+                                {warehouseSchemaInput}
+                            </Stack>
+                        </FormSection>
+                        <FormSection
+                            name="Advanced"
+                            isOpen={isAdvancedSettingsOpen}
+                        >
+                            <Stack style={{ marginTop: '8px' }}>
+                                {type !== DbtProjectType.DBT_CLOUD_IDE && (
+                                    <TextInput
+                                        {...register('dbt.selector')}
+                                        label="dbt selector"
+                                        description={
+                                            <p>
+                                                Add dbt selectors to filter out
+                                                models from your dbt project.
+                                                You can see more details in{' '}
+                                                <Anchor
+                                                    href="https://docs.lightdash.com/get-started/setup-lightdash/connect-project/#dbt-selector"
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                >
+                                                    our docs
+                                                </Anchor>
+                                                .
+                                            </p>
+                                        }
+                                        disabled={disabled}
+                                        placeholder="tag:lightdash"
+                                    />
+                                )}
+
+                                <MultiKeyValuePairsInput
+                                    name="dbt.environment"
+                                    label="Environment variables"
+                                    documentationUrl={`${baseDocUrl}${typeDocUrls[type].env}`}
+                                    disabled={disabled}
+                                />
+                            </Stack>
+                        </FormSection>
+                        <FormCollapseButton
+                            isSectionOpen={isAdvancedSettingsOpen}
                             onClick={toggleAdvancedSettingsOpen}
-                        />
-                    </AdvancedButtonWrapper>
-                </>
-            )}
+                        >
+                            Advanced configuration options
+                        </FormCollapseButton>
+                    </>
+                )}
+            </Stack>
         </div>
     );
 };

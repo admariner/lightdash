@@ -4,23 +4,25 @@ export const usersInProjectSql = (
 ) => `
 SELECT 
   DISTINCT ON (users.user_uuid) user_uuid,
-  CASE WHEN project_memberships.role IS NULL THEN
-    organization_memberships.role
-    else project_memberships.role end as role
+  COALESCE(project_memberships.role, project_group_access.role, organization_memberships.role) as role
 from users 
   left join emails on emails.user_id = users.user_id
   LEFT JOIN organization_memberships ON users.user_id  =  organization_memberships.user_id
   LEFT JOIN organizations ON organization_memberships.organization_id = organizations.organization_id
   LEFT JOIN project_memberships ON project_memberships.user_id = users.user_id
   LEFT JOIN projects on project_memberships.project_id = projects.project_id
+  LEFT JOIN group_memberships ON group_memberships.user_id = users.user_id
+  LEFT JOIN project_group_access ON project_group_access.group_uuid = group_memberships.group_uuid
 WHERE 
   emails.is_primary = true 
   AND ( 
       (organization_memberships.role != 'member'
         AND organization_uuid = '${organizationUuid}')
   OR 
-      (projects.project_uuid = project_uuid
-        AND project_uuid = '${projectUuid}'))
+      (projects.project_uuid = '${projectUuid}')
+  OR (
+    project_group_access.project_uuid = '${projectUuid}'
+  ))
 `;
 
 export const numberWeeklyQueryingUsersSql = (
@@ -59,7 +61,7 @@ GROUP BY users.user_uuid,
   users.first_name, 
   users.last_name
 ORDER BY COUNT(analytics_chart_views.user_uuid) DESC
-limit 10
+
 `;
 
 export const tableMostCreatedChartsSql = (
@@ -90,20 +92,32 @@ limit 10
 export const tableNoQueriesSql = (userUuids: string[], projectUuid: string) => `
 select 
   users.user_uuid, 
-  MIN(users.first_name), 
-  MIN(users.last_name),
-  MAX(analytics_chart_views.timestamp) 
+  MIN(users.first_name) as first_name, 
+  MIN(users.last_name) as last_name,
+  EXTRACT(DAY FROM  NOW() - COALESCE(MAX(analytics_chart_views.timestamp), MAX(users.created_at) ))   as count 
 from users
   LEFT JOIN analytics_chart_views ON users.user_uuid = analytics_chart_views.user_uuid
   left join saved_queries sq on sq.saved_query_uuid = analytics_chart_views.chart_uuid
   left join spaces s on s.space_id  = sq.space_id 
   left join projects on projects.project_id = s.project_id
-WHERE users.user_uuid in ('${userUuids.join(`','`)}')
-  AND projects.project_uuid = '${projectUuid}'
-  AND analytics_chart_views.timestamp <> null
-  AND analytics_chart_views.timestamp < NOW() - interval '90 days'
+WHERE users.user_uuid in ('${userUuids.join(
+    `','`,
+)}') AND users.first_name <> '' 
+  AND 
+  (
+    ( 
+      projects.project_uuid = '${projectUuid}'
+      AND analytics_chart_views.timestamp <> null
+      AND analytics_chart_views.timestamp < NOW() - interval '90 days'
+    )
+    OR 
+    (
+      analytics_chart_views.timestamp is null 
+      AND users.created_at < NOW() - interval '90 days'
+    )
+  )
 GROUP BY users.user_uuid
-limit 10
+
 `;
 
 const dateUserViewsGrid = (userUuids: string[], projectUuid: string) => `
@@ -181,4 +195,62 @@ FROM stg
 group by date
 order by date desc
 
+`;
+
+export const chartViewsSql = (projectUuid: string) => `
+SELECT  
+  count(chart_uuid) as count, 
+  chart_uuid as uuid, 
+  sq.name
+FROM public.analytics_chart_views
+  left join saved_queries sq on sq.saved_query_uuid  = chart_uuid 
+  left join spaces s on s.space_id  = sq.space_id 
+  left join projects on projects.project_id = s.project_id
+where projects.project_uuid = '${projectUuid}'
+group by chart_uuid, sq.name
+order by count(chart_uuid) desc
+limit 20
+`;
+
+export const dashboardViewsSql = (projectUuid: string) => `
+SELECT  
+  count(dv.dashboard_uuid) as count, 
+  dv.dashboard_uuid as uuid, 
+  d.name
+FROM public.analytics_dashboard_views dv
+  left join dashboards d  on d.dashboard_uuid  = dv.dashboard_uuid 
+  left join spaces s on s.space_id  = d.space_id 
+  left join projects on projects.project_id = s.project_id
+where projects.project_uuid = '${projectUuid}'
+group by dv.dashboard_uuid, d.name
+order by count(dv.dashboard_uuid) desc
+limit 20
+`;
+
+export const userMostViewedDashboardSql = (projectUuid: string) => `
+WITH RankedResults AS (
+  SELECT
+      u.user_uuid,
+      u.first_name,
+      u.last_name,
+      d."name" AS dashboard_name,
+      COUNT(dv.dashboard_uuid) AS dashboard_count,
+      ROW_NUMBER() OVER (PARTITION BY u.first_name ORDER BY COUNT(dv.dashboard_uuid) DESC) AS rank
+  FROM public.analytics_dashboard_views dv
+  LEFT JOIN users u ON u.user_uuid = dv.user_uuid
+  LEFT JOIN dashboards d ON dv.dashboard_uuid = d.dashboard_uuid
+  left join spaces s on s.space_id  = d.space_id 
+  left join projects on projects.project_id = s.project_id
+  WHERE projects.project_uuid = '${projectUuid}' 
+    AND u.user_uuid IS NOT NULL
+  GROUP BY u.user_uuid, u.first_name, u.last_name, d."name"
+)
+SELECT
+  user_uuid, 
+  first_name,
+  last_name,
+  dashboard_name,
+  dashboard_count as count
+FROM RankedResults
+WHERE rank = 1;
 `;

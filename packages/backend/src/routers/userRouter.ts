@@ -4,57 +4,19 @@ import {
 } from '@lightdash/common';
 import express from 'express';
 import {
-    allowApiKeyAuthentication,
     isAuthenticated,
     unauthorisedInDemo,
 } from '../controllers/authentication';
-import { userModel } from '../models/models';
-import { UserModel } from '../models/UserModel';
-import { personalAccessTokenService, userService } from '../services/services';
-import { sanitizeStringParam } from '../utils';
 
 export const userRouter = express.Router();
-
-userRouter.get('/', allowApiKeyAuthentication, isAuthenticated, (req, res) => {
-    res.json({
-        status: 'ok',
-        results: UserModel.lightdashUserFromSession(req.user!),
-    });
-});
-
-userRouter.post('/', unauthorisedInDemo, async (req, res, next) => {
-    try {
-        const lightdashUser = await userService.activateUserFromInvite(
-            req.body.inviteCode,
-            {
-                firstName: sanitizeStringParam(req.body.firstName),
-                lastName: sanitizeStringParam(req.body.lastName),
-                password: sanitizeStringParam(req.body.password),
-            },
-        );
-        const sessionUser = await userModel.findSessionUserByUUID(
-            lightdashUser.userUuid,
-        );
-        req.login(sessionUser, (err) => {
-            if (err) {
-                next(err);
-            }
-            res.json({
-                status: 'ok',
-                results: lightdashUser,
-            });
-        });
-    } catch (e) {
-        next(e);
-    }
-});
 
 userRouter.patch(
     '/me',
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        userService
+        req.services
+            .getUserService()
             .updateUser(req.user!, req.body)
             .then((user) => {
                 res.json({
@@ -67,7 +29,8 @@ userRouter.patch(
 );
 
 userRouter.get('/password', isAuthenticated, async (req, res, next) =>
-    userService
+    req.services
+        .getUserService()
         .hasPassword(req.user!)
         .then((hasPassword: boolean) => {
             res.json({
@@ -83,7 +46,8 @@ userRouter.post(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) =>
-        userService
+        req.services
+            .getUserService()
             .updatePassword(req.user!, req.body)
             .then(() => {
                 req.logout((err) => {
@@ -105,7 +69,8 @@ userRouter.post(
 );
 
 userRouter.post('/password/reset', unauthorisedInDemo, async (req, res, next) =>
-    userService
+    req.services
+        .getUserService()
         .resetPassword(req.body)
         .then(() => {
             res.json({
@@ -116,7 +81,9 @@ userRouter.post('/password/reset', unauthorisedInDemo, async (req, res, next) =>
 );
 
 userRouter.get('/identities', isAuthenticated, async (req, res, next) => {
-    const identities = await userService.getLinkedIdentities(req.user!);
+    const identities = await req.services
+        .getUserService()
+        .getLinkedIdentities(req.user!);
     res.json({
         status: 'ok',
         results: identities,
@@ -128,7 +95,8 @@ userRouter.delete(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        userService
+        req.services
+            .getUserService()
             .deleteLinkedIdentity(req.user!, req.body)
             .then(() => {
                 res.json({
@@ -144,7 +112,8 @@ userRouter.patch(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        userService
+        req.services
+            .getUserService()
             .completeUserSetup(req.user!, req.body)
             .then((results) => {
                 res.json({
@@ -161,7 +130,8 @@ userRouter.post(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        personalAccessTokenService
+        req.services
+            .getPersonalAccessTokenService()
             .createPersonalAccessToken(
                 req.user!,
                 req.body,
@@ -177,7 +147,8 @@ userRouter.get(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        personalAccessTokenService
+        req.services
+            .getPersonalAccessTokenService()
             .getAllPersonalAccessTokens(req.user!)
             .then((results) =>
                 res.json({
@@ -194,7 +165,8 @@ userRouter.delete(
     isAuthenticated,
     unauthorisedInDemo,
     async (req, res, next) => {
-        personalAccessTokenService
+        req.services
+            .getPersonalAccessTokenService()
             .deletePersonalAccessToken(req.user!, req.params.tokenUuid)
             .then(() =>
                 res.json({

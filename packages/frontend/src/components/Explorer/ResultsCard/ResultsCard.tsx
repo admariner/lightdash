@@ -1,19 +1,23 @@
-import { Button, PopoverPosition } from '@blueprintjs/core';
-import { Classes, Popover2 } from '@blueprintjs/popover2';
-import { getResultValues } from '@lightdash/common';
-import { FC, memo, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
-import { downloadCsv } from '../../../hooks/useDownloadCsv';
-import { getQueryResults } from '../../../hooks/useQueryResults';
-import {
-    ExplorerSection,
-    useExplorerContext,
-} from '../../../providers/ExplorerProvider';
+import { subject } from '@casl/ability';
+import { ActionIcon, Popover } from '@mantine/core';
+import { IconShare2 } from '@tabler/icons-react';
+import { memo, useCallback, useMemo, type FC } from 'react';
+import { useParams } from 'react-router';
+import { downloadCsv } from '../../../api/csv';
+import { uploadGsheet } from '../../../hooks/gdrive/useGdrive';
+import { Can } from '../../../providers/Ability';
+import useApp from '../../../providers/App/useApp';
+import { ExplorerSection } from '../../../providers/Explorer/types';
+import useExplorerContext from '../../../providers/Explorer/useExplorerContext';
 import AddColumnButton from '../../AddColumnButton';
-import CollapsableCard from '../../common/CollapsableCard';
-import ExportCSV from '../../ExportCSV';
-import LimitButton from '../../LimitButton';
+import ExportSelector from '../../ExportSelector';
 import SortButton from '../../SortButton';
+import CollapsableCard from '../../common/CollapsableCard/CollapsableCard';
+import {
+    COLLAPSABLE_CARD_ACTION_ICON_PROPS,
+    COLLAPSABLE_CARD_POPOVER_PROPS,
+} from '../../common/CollapsableCard/constants';
+import MantineIcon from '../../common/MantineIcon';
 import { ExplorerResults } from './ExplorerResults';
 
 const ResultsCard: FC = memo(() => {
@@ -26,17 +30,15 @@ const ResultsCard: FC = memo(() => {
     const tableName = useExplorerContext(
         (context) => context.state.unsavedChartVersion.tableName,
     );
-    const limit = useExplorerContext(
-        (context) => context.state.unsavedChartVersion.metricQuery.limit,
-    );
     const sorts = useExplorerContext(
         (context) => context.state.unsavedChartVersion.metricQuery.sorts,
     );
+
     const rows = useExplorerContext(
         (context) => context.queryResults.data?.rows,
     );
-    const setRowLimit = useExplorerContext(
-        (context) => context.actions.setRowLimit,
+    const resultsData = useExplorerContext(
+        (context) => context.queryResults.data,
     );
     const toggleExpandedSection = useExplorerContext(
         (context) => context.actions.toggleExpandedSection,
@@ -44,18 +46,43 @@ const ResultsCard: FC = memo(() => {
     const metricQuery = useExplorerContext(
         (context) => context.state.unsavedChartVersion.metricQuery,
     );
-    const { projectUuid } = useParams<{ projectUuid: string }>();
 
+    const columnOrder = useExplorerContext(
+        (context) => context.state.unsavedChartVersion.tableConfig.columnOrder,
+    );
+
+    const disabled = !resultsData || resultsData.rows.length <= 0;
+
+    const { projectUuid } = useParams<{ projectUuid: string }>();
     const getCsvLink = async (csvLimit: number | null, onlyRaw: boolean) => {
-        const csvResponse = await downloadCsv({
-            projectUuid,
-            tableId: tableName,
-            query: metricQuery,
-            csvLimit,
-            onlyRaw,
-            showTableNames: true,
-        });
-        return csvResponse.url;
+        if (projectUuid) {
+            return downloadCsv({
+                projectUuid,
+                tableId: tableName,
+                query: metricQuery,
+                csvLimit,
+                onlyRaw,
+                columnOrder,
+                showTableNames: true,
+                pivotColumns: undefined, // results are always unpivoted
+            });
+        } else {
+            throw new Error('Project UUID is missing');
+        }
+    };
+
+    const getGsheetLink = async () => {
+        if (projectUuid) {
+            return uploadGsheet({
+                projectUuid,
+                exploreId: tableName,
+                metricQuery,
+                columnOrder,
+                showTableNames: true,
+            });
+        } else {
+            throw new Error('Project UUID is missing');
+        }
     };
 
     const resultsIsOpen = useMemo(
@@ -66,6 +93,7 @@ const ResultsCard: FC = memo(() => {
         () => toggleExpandedSection(ExplorerSection.RESULTS),
         [toggleExpandedSection],
     );
+    const { user } = useApp();
     return (
         <CollapsableCard
             title="Results"
@@ -74,41 +102,53 @@ const ResultsCard: FC = memo(() => {
             disabled={!tableName}
             headerElement={
                 <>
-                    {tableName && (
-                        <LimitButton
-                            isEditMode={isEditMode}
-                            limit={limit}
-                            onLimitChange={setRowLimit}
-                        />
-                    )}
-
                     {tableName && sorts.length > 0 && (
                         <SortButton isEditMode={isEditMode} sorts={sorts} />
                     )}
                 </>
             }
             rightHeaderElement={
+                projectUuid &&
                 resultsIsOpen &&
                 tableName && (
                     <>
                         {isEditMode && <AddColumnButton />}
-                        <Popover2
-                            lazy
-                            position={PopoverPosition.BOTTOM_LEFT}
-                            popoverClassName={Classes.POPOVER2_CONTENT_SIZING}
-                            content={
-                                <ExportCSV
-                                    rows={rows}
-                                    getCsvLink={getCsvLink}
-                                />
-                            }
+
+                        <Can
+                            I="manage"
+                            this={subject('ExportCsv', {
+                                organizationUuid: user.data?.organizationUuid,
+                                projectUuid: projectUuid,
+                            })}
                         >
-                            <Button
-                                text="Export CSV"
-                                rightIcon="caret-down"
-                                minimal
-                            />
-                        </Popover2>
+                            <Popover
+                                {...COLLAPSABLE_CARD_POPOVER_PROPS}
+                                disabled={disabled}
+                                position="bottom-end"
+                            >
+                                <Popover.Target>
+                                    <ActionIcon
+                                        data-testid="export-csv-button"
+                                        {...COLLAPSABLE_CARD_ACTION_ICON_PROPS}
+                                        disabled={disabled}
+                                    >
+                                        <MantineIcon
+                                            icon={IconShare2}
+                                            color="gray"
+                                        />
+                                    </ActionIcon>
+                                </Popover.Target>
+
+                                <Popover.Dropdown>
+                                    <ExportSelector
+                                        projectUuid={projectUuid}
+                                        rows={rows}
+                                        getCsvLink={getCsvLink}
+                                        getGsheetLink={getGsheetLink}
+                                    />
+                                </Popover.Dropdown>
+                            </Popover>
+                        </Can>
                     </>
                 )
             }

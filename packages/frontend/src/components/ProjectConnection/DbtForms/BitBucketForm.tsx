@@ -1,52 +1,52 @@
 import { DbtProjectType } from '@lightdash/common';
-import React, { FC } from 'react';
+import { Anchor, PasswordInput, TextInput } from '@mantine/core';
+import React, { type FC } from 'react';
+import { useFormContext } from 'react-hook-form';
 import {
     hasNoWhiteSpaces,
     isGitRepository,
     startWithSlash,
 } from '../../../utils/fieldValidators';
-import Input from '../../ReactHookForm/Input';
-import PasswordInput from '../../ReactHookForm/PasswordInput';
-import { useProjectFormContext } from '../ProjectFormProvider';
+import { useProjectFormContext } from '../useProjectFormContext';
+import DbtVersionSelect from '../WarehouseForms/Inputs/DbtVersion';
 
 const BitBucketForm: FC<{ disabled: boolean }> = ({ disabled }) => {
     const { savedProject } = useProjectFormContext();
     const requireSecrets: boolean =
         savedProject?.dbtConnection.type !== DbtProjectType.BITBUCKET;
+    const { register } = useFormContext();
     return (
         <>
-            <Input
-                name="dbt.username"
+            <TextInput
                 label="Username"
-                labelHelp="This is the login name for your Bitbucket user. This is usually the same username you use to login to Bitbucket."
-                rules={{
-                    required: 'Required field',
+                description="This is the login name for your Bitbucket user. This is usually the same username you use to login to Bitbucket."
+                required
+                {...register('dbt.username', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Username'),
                     },
-                }}
+                })}
                 disabled={disabled}
                 placeholder="BitBucket username"
             />
             <PasswordInput
-                name="dbt.personal_access_token"
                 label="HTTP access token"
-                labelHelp={
+                description={
                     <>
                         <p>
                             Bitbucket Cloud users should
-                            <a
+                            <Anchor
                                 href="https://support.atlassian.com/bitbucket-cloud/docs/create-an-app-password/"
                                 target="_blank"
                                 rel="noreferrer"
                             >
                                 {' '}
                                 follow instructions for creating an App Password
-                            </a>
+                            </Anchor>
                         </p>
                         <p>
                             Bitbucket Server users should
-                            <a
+                            <Anchor
                                 href="https://confluence.atlassian.com/bitbucketserver/http-access-tokens-939515499.html"
                                 target="_blank"
                                 rel="noreferrer"
@@ -54,7 +54,7 @@ const BitBucketForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                                 {' '}
                                 follow instructions for creating a HTTP Access
                                 Token
-                            </a>
+                            </Anchor>
                         </p>
                         <p>
                             Select <b>Project read</b> and{' '}
@@ -63,37 +63,36 @@ const BitBucketForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: requireSecrets ? 'Required field' : undefined,
-                }}
+                required={requireSecrets}
+                {...register('dbt.personal_access_token')}
                 placeholder={
                     disabled || !requireSecrets ? '**************' : undefined
                 }
                 disabled={disabled}
             />
-            <Input
-                name="dbt.repository"
+            <TextInput
                 label="Repository"
-                labelHelp={
+                description={
                     <p>
                         This should be in the format <b>my-org/my-repo</b>. e.g.{' '}
                         <b>lightdash/lightdash-analytics</b>
                     </p>
                 }
-                rules={{
-                    required: 'Required field',
+                required
+                {...register('dbt.repository', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Repository'),
                         isGitRepository: isGitRepository('Repository'),
                     },
-                }}
+                })}
                 disabled={disabled}
                 placeholder="org/project"
             />
-            <Input
-                name="dbt.branch"
+            <DbtVersionSelect disabled={disabled} />
+
+            <TextInput
                 label="Branch"
-                labelHelp={
+                description={
                     <>
                         <p>
                             This is the branch in your Bitbucket repo that
@@ -106,19 +105,18 @@ const BitBucketForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: 'Required field',
+                required
+                {...register('dbt.branch', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Branch'),
                     },
-                }}
+                })}
                 disabled={disabled}
                 defaultValue="main"
             />
-            <Input
-                name="dbt.project_sub_path"
+            <TextInput
                 label="Project directory path"
-                labelHelp={
+                description={
                     <>
                         <p>
                             This is the folder where your <b>dbt_project.yml</b>{' '}
@@ -144,8 +142,8 @@ const BitBucketForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                         </p>
                     </>
                 }
-                rules={{
-                    required: 'Required field',
+                required
+                {...register('dbt.project_sub_path', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces(
                             'Project directory path',
@@ -154,34 +152,33 @@ const BitBucketForm: FC<{ disabled: boolean }> = ({ disabled }) => {
                             'Project directory path',
                         ),
                     },
-                }}
+                })}
                 disabled={disabled}
                 defaultValue="/"
             />
-            <Input
-                name="dbt.host_domain"
+            <TextInput
                 label="Host domain (for self-hosted instances)"
-                labelHelp={
+                description={
                     <p>
                         If you've
-                        <a
+                        <Anchor
                             href="https://confluence.atlassian.com/bitbucketserver/specify-the-bitbucket-base-url-776640392.html"
                             target="_blank"
                             rel="noreferrer"
                         >
                             {' '}
                             customized the domain for your Bitbucket server{' '}
-                        </a>
+                        </Anchor>
                         you can add the custom domain for your project in here.
                     </p>
                 }
                 disabled={disabled}
                 defaultValue="bitbucket.org"
-                rules={{
+                {...register('dbt.host_domain', {
                     validate: {
                         hasNoWhiteSpaces: hasNoWhiteSpaces('Host domain'),
                     },
-                }}
+                })}
             />
         </>
     );

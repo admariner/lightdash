@@ -1,18 +1,18 @@
-import { NonIdealState, Spinner } from '@blueprintjs/core';
-import { ApiQueryResults, Field } from '@lightdash/common';
-import React, { FC, useCallback } from 'react';
+import { type ApiQueryResults, type Field } from '@lightdash/common';
+import { Box, Center } from '@mantine/core';
+import { useCallback, type FC } from 'react';
 import useUnderlyingDataColumns from '../../hooks/useUnderlyingDataColumns';
-import { TrackSection } from '../../providers/TrackingProvider';
+import { TrackSection } from '../../providers/Tracking/TrackingProvider';
 import { SectionName } from '../../types/Events';
+import SuboptimalState from '../common/SuboptimalState/SuboptimalState';
 import Table from '../common/Table';
 import {
     TableHeaderBoldLabel,
     TableHeaderLabelContainer,
     TableHeaderRegularLabel,
 } from '../common/Table/Table.styles';
-import { TableColumn } from '../common/Table/types';
+import { type TableColumn } from '../common/Table/types';
 import CellContextMenu from './CellContextMenu';
-import { LoadingPanel } from './UnderlyingDataModal.styles';
 
 const UnderlyingDataResultsTable: FC<{
     fieldsMap: Record<string, Field>;
@@ -53,30 +53,30 @@ const UnderlyingDataResultsTable: FC<{
 
     if (isLoading) {
         return (
-            <LoadingPanel>
-                <NonIdealState
-                    title="Loading underlying data"
-                    icon={<Spinner />}
-                />
-            </LoadingPanel>
+            <Center my="lg" miw="70vw">
+                <SuboptimalState title="Loading underlying data" loading />
+            </Center>
         );
     }
 
     return (
         <TrackSection name={SectionName.RESULTS_TABLE}>
-            <Table
-                status={'success'}
-                data={resultsData?.rows || []}
-                columns={columns.sort(sortByUnderlyingValues)}
-                pagination={{
-                    show: true,
-                    defaultScroll: true,
-                }}
-                footer={{
-                    show: true,
-                }}
-                cellContextMenu={CellContextMenu}
-            />
+            <Box h="inherit">
+                <Table
+                    status={'success'}
+                    data={resultsData?.rows || []}
+                    columns={columns.sort(sortByUnderlyingValues)}
+                    pagination={{
+                        show: true,
+                        defaultScroll: true,
+                    }}
+                    footer={{
+                        show: true,
+                    }}
+                    cellContextMenu={CellContextMenu}
+                    $shouldExpand
+                />
+            </Box>
         </TrackSection>
     );
 };

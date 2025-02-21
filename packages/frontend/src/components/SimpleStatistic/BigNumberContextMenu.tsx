@@ -1,112 +1,183 @@
-import { Menu, Position } from '@blueprintjs/core';
-import { MenuItem2, Popover2, Popover2Props } from '@blueprintjs/popover2';
-import { ResultRow } from '@lightdash/common';
-import { FC, useCallback, useMemo } from 'react';
-import CopyToClipboard from 'react-copy-to-clipboard';
-import { useParams } from 'react-router-dom';
+import { subject } from '@casl/ability';
+import { hasCustomDimension, type ResultValue } from '@lightdash/common';
+import { Menu, Text } from '@mantine/core';
+import { useClipboard } from '@mantine/hooks';
+import { IconArrowBarToDown, IconCopy, IconStack } from '@tabler/icons-react';
+import mapValues from 'lodash/mapValues';
+import { useCallback, useMemo, type FC } from 'react';
+import { useParams } from 'react-router';
 import useToaster from '../../hooks/toaster/useToaster';
-import { useExplore } from '../../hooks/useExplore';
-import { useApp } from '../../providers/AppProvider';
-import { useTracking } from '../../providers/TrackingProvider';
+import { Can } from '../../providers/Ability';
+import useApp from '../../providers/App/useApp';
+import useTracking from '../../providers/Tracking/useTracking';
 import { EventName } from '../../types/Events';
-import { useVisualizationContext } from '../LightdashVisualization/VisualizationProvider';
-import DrillDownMenuItem from '../MetricQueryData/DrillDownMenuItem';
-import { useMetricQueryDataContext } from '../MetricQueryData/MetricQueryDataProvider';
+import MantineIcon from '../common/MantineIcon';
+import { isBigNumberVisualizationConfig } from '../LightdashVisualization/types';
+import { useVisualizationContext } from '../LightdashVisualization/useVisualizationContext';
+import { useMetricQueryDataContext } from '../MetricQueryData/useMetricQueryDataContext';
 
-interface BigNumberContextMenuProps {
-    renderTarget: Popover2Props['renderTarget'];
-}
-
-export const BigNumberContextMenu: FC<BigNumberContextMenuProps> = ({
-    renderTarget,
+const BigNumberContextMenu: FC<React.PropsWithChildren<{}>> = ({
+    children,
 }) => {
+    const clipboard = useClipboard({ timeout: 200 });
     const { showToastSuccess } = useToaster();
-    const { resultsData, bigNumberConfig } = useVisualizationContext();
-    const { openUnderlyingDataModel, tableName } = useMetricQueryDataContext();
-    const { data: explore } = useExplore(tableName);
+    const { resultsData, visualizationConfig, itemsMap } =
+        useVisualizationContext();
+    const { openUnderlyingDataModal, openDrillDownModal, metricQuery } =
+        useMetricQueryDataContext();
 
     const { track } = useTracking();
     const { user } = useApp();
     const { projectUuid } = useParams<{ projectUuid: string }>();
-    const selectedItem = useMemo(
-        () =>
-            bigNumberConfig?.selectedField
-                ? bigNumberConfig.getField(bigNumberConfig.selectedField)
-                : undefined,
-        [bigNumberConfig],
-    );
 
-    const row: ResultRow = useMemo(() => {
-        return resultsData?.rows?.[0] || {};
+    const isBigNumber = isBigNumberVisualizationConfig(visualizationConfig);
+
+    const fieldValues: Record<string, ResultValue> = useMemo(() => {
+        return mapValues(resultsData?.rows?.[0], (col) => col.value) ?? {};
     }, [resultsData]);
 
+    const item = useMemo(() => {
+        if (!isBigNumber) return;
+
+        const { chartConfig } = visualizationConfig;
+
+        return chartConfig.getField(chartConfig.selectedField);
+    }, [visualizationConfig, isBigNumber]);
+
     const value = useMemo(() => {
-        if (bigNumberConfig.selectedField) {
-            return row[bigNumberConfig.selectedField]?.value;
-        }
-    }, [row, bigNumberConfig]);
+        if (!isBigNumber) return;
 
-    const viewUnderlyingData = useCallback(() => {
-        if (
-            explore !== undefined &&
-            bigNumberConfig.selectedField !== undefined &&
-            value
-        ) {
-            const meta = {
-                item: bigNumberConfig.getField(bigNumberConfig.selectedField),
-            };
+        const { chartConfig } = visualizationConfig;
 
-            openUnderlyingDataModel(value, meta, row);
-            track({
-                name: EventName.VIEW_UNDERLYING_DATA_CLICKED,
-                properties: {
-                    organizationId: user?.data?.organizationUuid,
-                    userId: user?.data?.userUuid,
-                    projectId: projectUuid,
-                },
-            });
+        if (chartConfig.selectedField) {
+            return fieldValues[chartConfig.selectedField];
         }
-    }, [explore, bigNumberConfig, row, value, openUnderlyingDataModel]);
+    }, [fieldValues, visualizationConfig, isBigNumber]);
+
+    const handleCopyToClipboard = () => {
+        if (!value) return;
+        clipboard.copy(value.formatted);
+        showToastSuccess({ title: 'Copied to clipboard!' });
+    };
+
+    const handleViewUnderlyingData = useCallback(() => {
+        if (!isBigNumber) return;
+
+        const { chartConfig } = visualizationConfig;
+
+        if (!itemsMap || chartConfig.selectedField === undefined || !value) {
+            return;
+        }
+
+        openUnderlyingDataModal({ item, value, fieldValues });
+        track({
+            name: EventName.VIEW_UNDERLYING_DATA_CLICKED,
+            properties: {
+                organizationId: user?.data?.organizationUuid,
+                userId: user?.data?.userUuid,
+                projectId: projectUuid,
+            },
+        });
+    }, [
+        projectUuid,
+        itemsMap,
+        value,
+        item,
+        fieldValues,
+        track,
+        openUnderlyingDataModal,
+        user?.data?.organizationUuid,
+        user?.data?.userUuid,
+        isBigNumber,
+        visualizationConfig,
+    ]);
+
+    const handleOpenDrillIntoModal = useCallback(() => {
+        if (!item) return;
+
+        openDrillDownModal({ item, fieldValues });
+        track({
+            name: EventName.DRILL_BY_CLICKED,
+            properties: {
+                organizationId: user?.data?.organizationUuid,
+                userId: user?.data?.userUuid,
+                projectId: projectUuid,
+            },
+        });
+    }, [
+        item,
+        fieldValues,
+        openDrillDownModal,
+        projectUuid,
+        track,
+        user?.data?.organizationUuid,
+        user?.data?.userUuid,
+    ]);
+
+    if (!item && !value) return <>{children}</>;
 
     return (
-        <Popover2
-            lazy
-            minimal
-            position={Position.BOTTOM}
-            renderTarget={renderTarget}
-            content={
-                <Menu>
-                    {value && (
-                        <CopyToClipboard
-                            text={value.formatted}
-                            onCopy={() => {
-                                showToastSuccess({
-                                    title: 'Copied to clipboard!',
-                                });
-                            }}
-                        >
-                            <MenuItem2 text="Copy value" icon="duplicate" />
-                        </CopyToClipboard>
-                    )}
+        <Menu
+            withArrow
+            withinPortal
+            shadow="md"
+            position="bottom"
+            closeOnItemClick
+            closeOnEscape
+            radius={0}
+            offset={-2}
+        >
+            <Menu.Target>{children}</Menu.Target>
 
-                    <MenuItem2
-                        text="View underlying data"
-                        icon="layers"
-                        onClick={() => {
-                            viewUnderlyingData();
-                        }}
-                    />
-                    <DrillDownMenuItem
-                        row={resultsData?.rows[0]}
-                        selectedItem={selectedItem}
-                        trackingData={{
-                            organizationId: user?.data?.organizationUuid,
-                            userId: user?.data?.userUuid,
-                            projectId: projectUuid,
-                        }}
-                    />
-                </Menu>
-            }
-        />
+            <Menu.Dropdown>
+                {value && (
+                    <Menu.Item
+                        icon={<MantineIcon icon={IconCopy} />}
+                        onClick={handleCopyToClipboard}
+                    >
+                        Copy value
+                    </Menu.Item>
+                )}
+
+                {item && !hasCustomDimension(metricQuery) && (
+                    <Can
+                        I="view"
+                        this={subject('UnderlyingData', {
+                            organizationUuid: user.data?.organizationUuid,
+                            projectUuid: projectUuid,
+                        })}
+                    >
+                        <Menu.Item
+                            icon={<MantineIcon icon={IconStack} />}
+                            onClick={handleViewUnderlyingData}
+                        >
+                            View underlying data
+                        </Menu.Item>
+                    </Can>
+                )}
+
+                {item && value && (
+                    <Can
+                        I="manage"
+                        this={subject('Explore', {
+                            organizationUuid: user.data?.organizationUuid,
+                            projectUuid: projectUuid,
+                        })}
+                    >
+                        <Menu.Item
+                            icon={<MantineIcon icon={IconArrowBarToDown} />}
+                            onClick={handleOpenDrillIntoModal}
+                        >
+                            Drill into{' '}
+                            <Text span fw={500}>
+                                {value.formatted}
+                            </Text>
+                        </Menu.Item>
+                    </Can>
+                )}
+            </Menu.Dropdown>
+        </Menu>
     );
 };
+
+export default BigNumberContextMenu;

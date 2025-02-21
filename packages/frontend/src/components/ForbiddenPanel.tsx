@@ -1,17 +1,14 @@
-import { NonIdealState } from '@blueprintjs/core';
-import { FC } from 'react';
-import { Link } from 'react-router-dom';
-import styled from 'styled-components';
-import { Can } from './common/Authorization';
-
-const ForbiddenPanelWrapper = styled.div`
-    margin-top: 30vh;
-`;
+import { Anchor, Box } from '@mantine/core';
+import { IconLock } from '@tabler/icons-react';
+import { type FC } from 'react';
+import { Link } from 'react-router';
+import { Can } from '../providers/Ability';
+import SuboptimalState from './common/SuboptimalState/SuboptimalState';
 
 const ForbiddenPanel: FC<{ subject?: string }> = ({ subject }) => {
     return (
-        <ForbiddenPanelWrapper>
-            <NonIdealState
+        <Box mt="30vh">
+            <SuboptimalState
                 title={`You don't have access${
                     subject ? ` to this ${subject}` : ''
                 }`}
@@ -23,18 +20,21 @@ const ForbiddenPanel: FC<{ subject?: string }> = ({ subject }) => {
                             {(isAllowed) => {
                                 return (
                                     isAllowed && (
-                                        <Link to="/createProject">
+                                        <Anchor
+                                            component={Link}
+                                            to="/createProject"
+                                        >
                                             Or create a new project.
-                                        </Link>
+                                        </Anchor>
                                     )
                                 );
                             }}
                         </Can>
                     </>
                 }
-                icon="lock"
+                icon={IconLock}
             />
-        </ForbiddenPanelWrapper>
+        </Box>
     );
 };
 

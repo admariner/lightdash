@@ -1,47 +1,42 @@
 import {
-    AnchorButton,
-    Button,
-    Classes,
-    Dialog,
-    FormGroup,
-    Intent,
-} from '@blueprintjs/core';
-import {
     ChartType,
-    CompiledDimension,
-    CreateSavedChartVersion,
-    DashboardFilters,
-    FieldId,
-    fieldId as getFieldId,
-    FilterGroupItem,
     FilterOperator,
-    FilterRule,
-    Filters,
     getDimensions,
     getItemId,
     hashFieldReference,
     isField,
-    MetricQuery,
-    PivotReference,
-    ResultRow,
+    type CompiledDimension,
+    type CreateSavedChartVersion,
+    type DashboardFilters,
+    type FieldId,
+    type FilterGroupItem,
+    type FilterRule,
+    type Filters,
+    type MetricQuery,
+    type PivotReference,
+    type ResultValue,
 } from '@lightdash/common';
-import React, { FC, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { Button, Group, Modal, Stack, Title } from '@mantine/core';
+import { IconExternalLink } from '@tabler/icons-react';
+import { useCallback, useMemo, useState, type FC } from 'react';
+import { useParams } from 'react-router';
 import { v4 as uuidv4 } from 'uuid';
 import { getExplorerUrlFromCreateSavedChartVersion } from '../../hooks/useExplorerRoute';
-import FieldAutoComplete from '../common/Filters/FieldAutoComplete';
-import { useMetricQueryDataContext } from './MetricQueryDataProvider';
+import FieldSelect from '../common/FieldSelect';
+import MantineIcon from '../common/MantineIcon';
+import { useMetricQueryDataContext } from './useMetricQueryDataContext';
 
 type CombineFiltersArgs = {
+    fieldValues: Record<string, ResultValue>;
     metricQuery: MetricQuery;
-    row: ResultRow;
     pivotReference?: PivotReference;
     dashboardFilters?: DashboardFilters;
     extraFilters?: Filters;
 };
+
 const combineFilters = ({
+    fieldValues,
     metricQuery,
-    row,
     pivotReference,
     dashboardFilters,
     extraFilters,
@@ -74,7 +69,7 @@ const combineFilters = ({
     const dimensionFilters: FilterRule[] = metricQuery.dimensions.reduce<
         FilterRule[]
     >((acc, dimension) => {
-        const rowValue = row[dimension];
+        const rowValue = fieldValues[dimension];
         if (!rowValue) {
             return acc;
         }
@@ -84,11 +79,10 @@ const combineFilters = ({
                 fieldId: dimension,
             },
             operator:
-                rowValue.value.raw === null
+                rowValue.raw === null
                     ? FilterOperator.NULL
                     : FilterOperator.EQUALS,
-            values:
-                rowValue.value.raw === null ? undefined : [rowValue.value.raw],
+            values: rowValue.raw === null ? undefined : [rowValue.raw],
         };
         return [...acc, dimensionFilter];
     }, []);
@@ -103,38 +97,36 @@ const combineFilters = ({
 };
 
 type DrillDownExploreUrlArgs = {
+    fieldValues: Record<string, ResultValue>;
     projectUuid: string;
     tableName: string;
     metricQuery: MetricQuery;
-    row: ResultRow;
     drillByMetric: FieldId;
     drillByDimension: FieldId;
-    dashboardFilters?: DashboardFilters;
     extraFilters?: Filters;
     pivotReference?: PivotReference;
 };
 
 const drillDownExploreUrl = ({
+    fieldValues,
     projectUuid,
     tableName,
     metricQuery,
-    row,
     drillByMetric,
     drillByDimension,
-    dashboardFilters,
     extraFilters,
     pivotReference,
 }: DrillDownExploreUrlArgs) => {
     const createSavedChartVersion: CreateSavedChartVersion = {
         tableName,
         metricQuery: {
+            exploreName: tableName,
             tableCalculations: [],
             dimensions: [drillByDimension],
             metrics: [drillByMetric],
             filters: combineFilters({
                 metricQuery,
-                row,
-                dashboardFilters,
+                fieldValues,
                 extraFilters,
                 pivotReference,
             }),
@@ -157,10 +149,13 @@ const drillDownExploreUrl = ({
     );
     return `${pathname}?${search}`;
 };
-const DrillDownModal: FC = () => {
+
+export const DrillDownModal: FC = () => {
     const { projectUuid } = useParams<{ projectUuid: string }>();
+
     const [selectedDimension, setSelectedDimension] =
-        React.useState<CompiledDimension>();
+        useState<CompiledDimension>();
+
     const {
         isDrillDownModalOpen,
         closeDrillDownModal,
@@ -170,33 +165,36 @@ const DrillDownModal: FC = () => {
     } = useMetricQueryDataContext();
 
     const dimensionsAvailable = useMemo(() => {
-        if (explore) {
-            return getDimensions(explore).filter(
-                (dimension) => !dimension.hidden,
-            );
-        }
-        return [];
+        if (!explore) return [];
+
+        return getDimensions(explore).filter((dimension) => !dimension.hidden);
     }, [explore]);
+
     const value = useMemo(() => {
-        if (drillDownConfig && isField(drillDownConfig.selectedItem)) {
+        if (drillDownConfig && isField(drillDownConfig.item)) {
             const fieldId =
                 drillDownConfig.pivotReference !== undefined
                     ? hashFieldReference(drillDownConfig.pivotReference)
-                    : getFieldId(drillDownConfig.selectedItem);
-            return drillDownConfig.row[fieldId]?.value.formatted;
+                    : getItemId(drillDownConfig.item);
+            return drillDownConfig.fieldValues[fieldId]?.formatted;
         }
     }, [drillDownConfig]);
 
     const url = useMemo(() => {
-        if (selectedDimension && metricQuery && explore && drillDownConfig) {
+        if (
+            selectedDimension &&
+            metricQuery &&
+            explore &&
+            drillDownConfig &&
+            projectUuid
+        ) {
             return drillDownExploreUrl({
                 projectUuid,
                 tableName: explore.name,
                 metricQuery,
-                row: drillDownConfig.row,
-                drillByMetric: getItemId(drillDownConfig.selectedItem),
+                fieldValues: drillDownConfig.fieldValues,
+                drillByMetric: getItemId(drillDownConfig.item),
                 drillByDimension: getItemId(selectedDimension),
-                dashboardFilters: drillDownConfig.dashboardFilters,
                 pivotReference: drillDownConfig.pivotReference,
             });
         }
@@ -206,48 +204,39 @@ const DrillDownModal: FC = () => {
         setSelectedDimension(undefined);
         closeDrillDownModal();
     }, [closeDrillDownModal]);
+
     return (
-        <Dialog
-            isOpen={isDrillDownModalOpen}
-            onClose={closeDrillDownModal}
-            lazy
-            title={`Drill into "${value}"`}
+        <Modal
+            opened={isDrillDownModalOpen}
+            onClose={onClose}
+            title={<Title order={4}>Drill into "{value}"</Title>}
         >
-            <form>
-                <div className={Classes.DIALOG_BODY}>
-                    <FormGroup
-                        label="Pick a dimension to segment your metric by"
-                        labelFor="chart-name"
+            <Stack>
+                <FieldSelect
+                    withinPortal
+                    disabled={dimensionsAvailable.length === 0}
+                    item={selectedDimension}
+                    items={dimensionsAvailable}
+                    onChange={setSelectedDimension}
+                    hasGrouping
+                />
+                <Group position="right">
+                    <Button variant="outline" onClick={onClose}>
+                        Cancel
+                    </Button>
+
+                    <Button
+                        component="a"
+                        target="_blank"
+                        href={url}
+                        leftIcon={<MantineIcon icon={IconExternalLink} />}
+                        disabled={!selectedDimension}
+                        onClick={() => setTimeout(onClose, 500)}
                     >
-                        <FieldAutoComplete
-                            activeField={selectedDimension}
-                            fields={dimensionsAvailable}
-                            onChange={(field) => {
-                                if (isField(field)) {
-                                    setSelectedDimension(field);
-                                }
-                            }}
-                            disabled={dimensionsAvailable.length === 0}
-                        />
-                    </FormGroup>
-                </div>
-                <div className={Classes.DIALOG_FOOTER}>
-                    <div className={Classes.DIALOG_FOOTER_ACTIONS}>
-                        <Button onClick={onClose}>Cancel</Button>
-                        <AnchorButton
-                            text="Open in new tab"
-                            href={url}
-                            target={'_blank'}
-                            disabled={!selectedDimension}
-                            onClick={onClose}
-                            intent={Intent.PRIMARY}
-                            type="submit"
-                        />
-                    </div>
-                </div>
-            </form>
-        </Dialog>
+                        Open in new tab
+                    </Button>
+                </Group>
+            </Stack>
+        </Modal>
     );
 };
-
-export default DrillDownModal;

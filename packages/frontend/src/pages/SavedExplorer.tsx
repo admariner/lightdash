@@ -1,49 +1,80 @@
-import { NonIdealState, Spinner } from '@blueprintjs/core';
-import { useMemo } from 'react';
-import { Helmet } from 'react-helmet';
-import { useParams } from 'react-router-dom';
-import { Transition } from 'react-transition-group';
-import ErrorState from '../components/common/ErrorState';
-import {
-    CardContent,
-    Drawer,
-    PageContentContainer,
-    PageWrapper,
-    Resizer,
-    StickySidebar,
-    WidthHack,
-} from '../components/common/Page/Page.styles';
+import { useParams } from 'react-router';
+
+import { ResourceViewItemType } from '@lightdash/common';
+import { useCallback, useEffect, useMemo } from 'react';
 import Explorer from '../components/Explorer';
 import ExplorePanel from '../components/Explorer/ExplorePanel';
 import SavedChartsHeader from '../components/Explorer/SavedChartsHeader';
+import ErrorState from '../components/common/ErrorState';
+import Page from '../components/common/Page/Page';
+import SuboptimalState from '../components/common/SuboptimalState/SuboptimalState';
+import useDashboardStorage from '../hooks/dashboard/useDashboardStorage';
+import { useChartPinningMutation } from '../hooks/pinning/useChartPinningMutation';
+import { usePinnedItems } from '../hooks/pinning/usePinnedItems';
+import { useQueryResults } from '../hooks/useQueryResults';
 import { useSavedQuery } from '../hooks/useSavedQuery';
-import useSidebarResize from '../hooks/useSidebarResize';
-import {
-    ExplorerProvider,
-    ExplorerSection,
-} from '../providers/ExplorerProvider';
+import useApp from '../providers/App/useApp';
+import ExplorerProvider from '../providers/Explorer/ExplorerProvider';
+import { ExplorerSection } from '../providers/Explorer/types';
 
 const SavedExplorer = () => {
-    const { savedQueryUuid, mode } = useParams<{
+    const { health } = useApp();
+
+    const { savedQueryUuid, mode, projectUuid } = useParams<{
         savedQueryUuid: string;
         projectUuid: string;
         mode?: string;
     }>();
-    const isEditMode = useMemo(() => mode === 'edit', [mode]);
-    const { data, isLoading, error } = useSavedQuery({
+
+    const isEditMode = mode === 'edit';
+
+    const { setDashboardChartInfo } = useDashboardStorage();
+
+    const { data, isInitialLoading, error } = useSavedQuery({
         id: savedQueryUuid,
     });
-    const { sidebarRef, sidebarWidth, isResizing, startResizing } =
-        useSidebarResize({
-            defaultWidth: 400,
-            minWidth: 300,
-            maxWidth: 600,
-        });
 
-    if (isLoading) {
+    const queryResults = useQueryResults({
+        chartUuid: savedQueryUuid,
+        isViewOnly: !isEditMode,
+    });
+
+    const { mutate: togglePinChart } = useChartPinningMutation();
+    const { data: pinnedItems } = usePinnedItems(
+        projectUuid,
+        data?.pinnedListUuid ?? undefined,
+    );
+
+    const handleChartPinning = useCallback(() => {
+        if (!savedQueryUuid) return;
+        togglePinChart({ uuid: savedQueryUuid });
+    }, [savedQueryUuid, togglePinChart]);
+
+    const isPinned = useMemo(() => {
+        return Boolean(
+            pinnedItems?.some(
+                (item) =>
+                    item.type === ResourceViewItemType.CHART &&
+                    item.data.uuid === data?.uuid,
+            ),
+        );
+    }, [data?.uuid, pinnedItems]);
+
+    useEffect(() => {
+        // If the saved explore is part of a dashboard, set the dashboard chart info
+        // so we can show the banner + the user can navigate back to the dashboard easily
+        if (data && data.dashboardUuid && data.dashboardName) {
+            setDashboardChartInfo({
+                name: data.dashboardName,
+                dashboardUuid: data.dashboardUuid,
+            });
+        }
+    }, [data, setDashboardChartInfo]);
+
+    if (isInitialLoading) {
         return (
             <div style={{ marginTop: '20px' }}>
-                <NonIdealState title="Loading..." icon={<Spinner />} />
+                <SuboptimalState title="Loading..." loading />
             </div>
         );
     }
@@ -53,6 +84,7 @@ const SavedExplorer = () => {
 
     return (
         <ExplorerProvider
+            queryResults={queryResults}
             isEditMode={isEditMode}
             initialState={
                 data
@@ -66,69 +98,41 @@ const SavedExplorer = () => {
                               tableConfig: data.tableConfig,
                               pivotConfig: data.pivotConfig,
                           },
+                          modals: {
+                              format: {
+                                  isOpen: false,
+                              },
+                              additionalMetric: {
+                                  isOpen: false,
+                              },
+                              customDimension: {
+                                  isOpen: false,
+                              },
+                              additionalMetricWriteBack: {
+                                  isOpen: false,
+                              },
+                          },
                       }
                     : undefined
             }
             savedChart={data}
+            defaultLimit={health.data?.query.defaultLimit}
         >
-            <Helmet>
-                <title>{data?.name} - Lightdash</title>
-            </Helmet>
-            <SavedChartsHeader />
-
-            <PageWrapper>
-                <StickySidebar $pageHasHeader>
-                    <Transition in={isEditMode} timeout={500}>
-                        {(state) => (
-                            <>
-                                <Drawer
-                                    elevation={1}
-                                    $state={state}
-                                    style={{
-                                        width: sidebarWidth,
-                                        left: [
-                                            'exiting',
-                                            'exited',
-                                            'unmounted',
-                                        ].includes(state)
-                                            ? -sidebarWidth
-                                            : 0,
-                                    }}
-                                >
-                                    <CardContent>
-                                        <ExplorePanel />
-                                    </CardContent>
-                                </Drawer>
-
-                                <WidthHack
-                                    ref={sidebarRef}
-                                    $state={state}
-                                    style={{
-                                        width: [
-                                            'exiting',
-                                            'exited',
-                                            'unmounted',
-                                        ].includes(state)
-                                            ? 0
-                                            : sidebarWidth + 5,
-                                    }}
-                                >
-                                    {isEditMode && (
-                                        <Resizer
-                                            onMouseDown={startResizing}
-                                            $isResizing={isResizing}
-                                        />
-                                    )}
-                                </WidthHack>
-                            </>
-                        )}
-                    </Transition>
-                </StickySidebar>
-
-                <PageContentContainer hasDraggableSidebar>
-                    <Explorer />
-                </PageContentContainer>
-            </PageWrapper>
+            <Page
+                title={data?.name}
+                header={
+                    <SavedChartsHeader
+                        onTogglePin={handleChartPinning}
+                        isPinned={isPinned}
+                    />
+                }
+                sidebar={<ExplorePanel />}
+                isSidebarOpen={isEditMode}
+                withFullHeight
+                withPaddedContent
+            >
+                <Explorer />
+            </Page>
         </ExplorerProvider>
     );
 };

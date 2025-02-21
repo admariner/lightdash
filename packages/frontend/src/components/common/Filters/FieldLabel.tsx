@@ -1,31 +1,33 @@
 import {
-    AdditionalMetric,
-    Field,
     isAdditionalMetric,
+    isCustomDimension,
     isField,
-    TableCalculation,
+    type AdditionalMetric,
+    type CustomDimension,
+    type Field,
+    type TableCalculation,
 } from '@lightdash/common';
-import { FC } from 'react';
-import styled from 'styled-components';
+import { Text } from '@mantine/core';
+import { type FC } from 'react';
 
 interface FieldLabelProps {
-    item: Field | TableCalculation | AdditionalMetric;
+    item: Field | TableCalculation | AdditionalMetric | CustomDimension;
+    hideTableName?: boolean;
 }
 
-const BolderText = styled.span`
-    font-weight: 600;
-`;
-
-const FieldLabel: FC<FieldLabelProps> = ({ item }) => {
+const FieldLabel: FC<FieldLabelProps> = ({ item, hideTableName = false }) => {
     return (
-        <span>
-            {isField(item) ? `${item.tableLabel} ` : ''}
-            <BolderText>
-                {isField(item) || isAdditionalMetric(item)
+        <Text span>
+            {!hideTableName && isField(item) ? `${item.tableLabel} ` : ''}
+
+            <Text span fw={500}>
+                {isCustomDimension(item)
+                    ? item.name
+                    : isField(item) || isAdditionalMetric(item)
                     ? item.label
                     : item.displayName}
-            </BolderText>
-        </span>
+            </Text>
+        </Text>
     );
 };
 

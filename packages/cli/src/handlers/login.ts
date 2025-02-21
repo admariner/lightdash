@@ -7,7 +7,7 @@ import { configFilePath, setContext, setDefaultUser } from '../config';
 import GlobalState from '../globalState';
 import * as styles from '../styles';
 import { checkLightdashVersion } from './dbt/apiClient';
-import { setFirstProject, setProjectInteractively } from './setProject';
+import { setFirstProject, setProjectCommand } from './setProject';
 
 type LoginOptions = {
     token?: string;
@@ -42,9 +42,10 @@ const loginWithToken = async (
         );
     }
     const userBody = await response.json();
-    const { userUuid } = userBody;
+    const { userUuid, organizationUuid } = userBody;
     return {
         userUuid,
+        organizationUuid,
         token,
     };
 };
@@ -69,6 +70,24 @@ const loginWithPassword = async (url: string) => {
             'Content-Type': 'application/json',
         },
     });
+    GlobalState.debug(`> Login response status: ${response.status}`);
+
+    switch (response.status) {
+        case 200:
+            break;
+        case 401:
+            throw new AuthorizationError(
+                `Unable to authenticate: invalid email or password`,
+            );
+        default:
+            // This error doesn't return a valid JSON, so we use .text instead
+            throw new AuthorizationError(
+                `Unable to authenticate: (${
+                    response.status
+                }) ${await response.text()}\nIf you use single sign-on (SSO) in the browser, login with a personal access token.`,
+            );
+    }
+
     const loginBody = await response.json();
     const header = response.headers.get('set-cookie');
     if (header === null) {
@@ -76,7 +95,7 @@ const loginWithPassword = async (url: string) => {
             `Cannot sign in:\n${JSON.stringify(loginBody)}`,
         );
     }
-    const { userUuid } = loginBody.results;
+    const { userUuid, organizationUuid } = loginBody.results;
     const cookie = header.split(';')[0].split('=')[1];
     const patUrl = new URL(`/api/v1/user/me/personal-access-tokens`, url).href;
     const now = new Date();
@@ -95,6 +114,7 @@ const loginWithPassword = async (url: string) => {
     const { token } = patResponseBody.results;
     return {
         userUuid,
+        organizationUuid,
         token,
     };
 };
@@ -124,7 +144,7 @@ export const login = async (url: string, options: LoginOptions) => {
         );
     }
     const proxyAuthorization = process.env.LIGHTDASH_PROXY_AUTHORIZATION;
-    const { userUuid, token } = options.token
+    const { userUuid, token, organizationUuid } = options.token
         ? await loginWithToken(url, options.token, proxyAuthorization)
         : await loginWithPassword(url);
 
@@ -134,6 +154,7 @@ export const login = async (url: string, options: LoginOptions) => {
         event: 'login.completed',
         properties: {
             userId: userUuid,
+            organizationId: organizationUuid,
             url,
             method: options.token ? 'token' : 'password',
         },
@@ -142,7 +163,7 @@ export const login = async (url: string, options: LoginOptions) => {
 
     GlobalState.debug(`> Saved config on: ${configFilePath}`);
 
-    await setDefaultUser(userUuid);
+    await setDefaultUser(userUuid, organizationUuid);
 
     console.error(`\n  ✅️ Login successful\n`);
 
@@ -150,9 +171,9 @@ export const login = async (url: string, options: LoginOptions) => {
         if (process.env.CI === 'true') {
             await setFirstProject();
         } else {
-            const project = await setProjectInteractively();
+            const project = await setProjectCommand();
 
-            if (!project) {
+            if (project === undefined) {
                 console.error(
                     'Now you can add your first project to lightdash by doing: ',
                 );

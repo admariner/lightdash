@@ -3,10 +3,8 @@ import {
     ApiShareResponse,
     CreateShareUrl,
 } from '@lightdash/common';
-import express from 'express';
 import {
     Body,
-    Controller,
     Get,
     Middlewares,
     OperationId,
@@ -16,13 +14,16 @@ import {
     Response,
     Route,
     SuccessResponse,
-} from 'tsoa';
-import { shareService } from '../services/services';
+    Tags,
+} from '@tsoa/runtime';
+import express from 'express';
 import { allowApiKeyAuthentication, isAuthenticated } from './authentication';
+import { BaseController } from './baseController';
 
 @Route('/api/v1/share')
 @Response<ApiErrorPayload>('default', 'Error')
-export class ShareController extends Controller {
+@Tags('Share links')
+export class ShareController extends BaseController {
     /**
      * Get a share url from a short url id
      * @param nanoId the short id for the share url
@@ -38,7 +39,9 @@ export class ShareController extends Controller {
         this.setStatus(200);
         return {
             status: 'ok',
-            results: await shareService.getShareUrl(req.user!, nanoId),
+            results: await this.services
+                .getShareService()
+                .getShareUrl(req.user!, nanoId),
         };
     }
 
@@ -55,11 +58,9 @@ export class ShareController extends Controller {
         @Body() body: CreateShareUrl,
         @Request() req: express.Request,
     ): Promise<ApiShareResponse> {
-        const shareUrl = await shareService.createShareUrl(
-            req.user!,
-            body.path,
-            body.params,
-        );
+        const shareUrl = await this.services
+            .getShareService()
+            .createShareUrl(req.user!, body.path, body.params);
         this.setStatus(201);
         return {
             status: 'ok',

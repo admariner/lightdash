@@ -1,86 +1,40 @@
-import { Colors } from '@blueprintjs/core';
 import {
     MantineProvider as MantineProviderBase,
-    MantineThemeOverride,
+    type MantineThemeOverride,
 } from '@mantine/core';
-import { FC } from 'react';
+import { Notifications } from '@mantine/notifications';
+import { type FC } from 'react';
 
-const themeOverride: MantineThemeOverride = {
-    black: Colors.DARK_GRAY1,
-    white: Colors.WHITE,
+import { getMantineThemeOverride } from '../mantineTheme';
 
-    fontFamily: [
-        '-apple-system',
-        'BlinkMacSystemFont',
-        'Segoe UI',
-        'Roboto',
-        'Oxygen',
-        'Ubuntu',
-        'Cantarell',
-        'Fira Sans',
-        'Droid Sans',
-        'Open Sans',
-        'Helvetica Neue',
-        'blueprint-icons-16',
-        'Apple Color Emoji',
-        'Segoe UI Emoji',
-        'sans-serif',
-    ].join(', '),
-
-    lineHeight: 1.2858142857,
-
-    globalStyles: () => ({
-        body: {
-            textTransform: 'none',
-            fontSize: '14px',
-        },
-
-        p: {
-            marginBottom: '10px',
-            marginTop: 0,
-        },
-
-        small: {
-            fontSize: '12px',
-        },
-
-        b: {
-            fontWeight: 'bold',
-        },
-
-        strong: {
-            fontWeight: 600,
-        },
-
-        a: {
-            cursor: 'pointer',
-            color: Colors.BLUE2,
-            textDecoration: 'none',
-
-            ':hover': {
-                color: Colors.BLUE2,
-                textDecoration: 'underline',
-            },
-        },
-
-        ':focus': {
-            outline: 'rgba(45, 114, 210, 0.6) solid 2px',
-            outlineOffset: '2px',
-            '-moz-outline-radius': '6px',
-        },
-    }),
+type Props = {
+    withGlobalStyles?: boolean;
+    withNormalizeCSS?: boolean;
+    withCSSVariables?: boolean;
+    theme?: MantineThemeOverride;
+    themeOverride?: MantineThemeOverride;
+    notificationsLimit?: number;
 };
 
-const MantineProvider: FC = ({ children }) => {
+const MantineProvider: FC<React.PropsWithChildren<Props>> = ({
+    children,
+    withGlobalStyles = false,
+    withNormalizeCSS = false,
+    withCSSVariables = false,
+    theme = getMantineThemeOverride(),
+    themeOverride = {},
+    notificationsLimit,
+}) => {
     return (
         <MantineProviderBase
-            withGlobalStyles
-            withNormalizeCSS
-            inherit
-            withCSSVariables
-            theme={themeOverride}
+            withGlobalStyles={withGlobalStyles}
+            withNormalizeCSS={withNormalizeCSS}
+            withCSSVariables={withCSSVariables}
+            theme={{ ...theme, ...themeOverride }}
         >
             {children}
+
+            <Notifications limit={notificationsLimit} />
         </MantineProviderBase>
     );
 };

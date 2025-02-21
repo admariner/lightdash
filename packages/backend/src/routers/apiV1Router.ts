@@ -1,17 +1,13 @@
 import express from 'express';
 import passport from 'passport';
-import { setFlagsFromString } from 'v8';
 import { lightdashConfig } from '../config/lightdashConfig';
 import {
-    redirectOIDCFailure,
-    redirectOIDCSuccess,
+    getLoginHint,
+    getOidcRedirectURL,
+    initiateOktaOpenIdLogin,
     storeOIDCRedirect,
-    unauthorisedInDemo,
 } from '../controllers/authentication';
-import { userModel } from '../models/models';
 import { UserModel } from '../models/UserModel';
-import { healthService, userService } from '../services/services';
-import { sanitizeEmailParam, sanitizeStringParam } from '../utils';
 import { analyticsRouter } from './analyticsRouter';
 import { dashboardRouter } from './dashboardRouter';
 import { headlessBrowserRouter } from './headlessBrowser';
@@ -33,8 +29,9 @@ apiV1Router.get('/livez', async (req, res, next) => {
 });
 
 apiV1Router.get('/health', async (req, res, next) => {
-    healthService
-        .getHealthState(!!req.user?.userUuid)
+    req.services
+        .getHealthService()
+        .getHealthState(req.user)
         .then((state) =>
             res.json({
                 status: 'ok',
@@ -49,31 +46,6 @@ apiV1Router.get('/flash', (req, res) => {
         status: 'ok',
         results: req.flash(),
     });
-});
-
-apiV1Router.post('/register', unauthorisedInDemo, async (req, res, next) => {
-    try {
-        const lightdashUser = await userService.registerNewUserWithOrg({
-            firstName: sanitizeStringParam(req.body.firstName),
-            lastName: sanitizeStringParam(req.body.lastName),
-            email: sanitizeEmailParam(req.body.email),
-            password: sanitizeStringParam(req.body.password),
-        });
-        const sessionUser = await userModel.findSessionUserByUUID(
-            lightdashUser.userUuid,
-        );
-        req.login(sessionUser, (err) => {
-            if (err) {
-                next(err);
-            }
-            res.json({
-                status: 'ok',
-                results: lightdashUser,
-            });
-        });
-    } catch (e) {
-        next(e);
-    }
 });
 
 apiV1Router.post('/login', passport.authenticate('local'), (req, res, next) => {
@@ -92,18 +64,52 @@ apiV1Router.post('/login', passport.authenticate('local'), (req, res, next) => {
 apiV1Router.get(
     lightdashConfig.auth.okta.loginPath,
     storeOIDCRedirect,
+    initiateOktaOpenIdLogin,
+);
+
+apiV1Router.get(lightdashConfig.auth.okta.callbackPath, (req, res, next) =>
     passport.authenticate('okta', {
-        scope: ['openid', 'profile', 'email'],
-    }),
+        failureRedirect: getOidcRedirectURL(false)(req),
+        successRedirect: getOidcRedirectURL(true)(req),
+        failureFlash: true,
+    })(req, res, next),
 );
 
 apiV1Router.get(
-    lightdashConfig.auth.okta.callbackPath,
-    passport.authenticate('okta', {
-        failureRedirect: '/api/v1/oauth/failure',
-        successRedirect: '/api/v1/oauth/success',
-        failureFlash: true,
+    lightdashConfig.auth.azuread.loginPath,
+    storeOIDCRedirect,
+    passport.authenticate('azuread', {
+        scope: ['openid', 'profile', 'email'].join(' '),
     }),
+);
+
+apiV1Router.get(lightdashConfig.auth.azuread.callbackPath, (req, res, next) =>
+    passport.authenticate('azuread', {
+        failureRedirect: getOidcRedirectURL(false)(req),
+        successRedirect: getOidcRedirectURL(true)(req),
+        failureFlash: true,
+    })(req, res, next),
+);
+
+apiV1Router.get(
+    lightdashConfig.auth.oidc.loginPath,
+    storeOIDCRedirect,
+    passport.authenticate(
+        'oidc',
+        lightdashConfig.auth.oidc.scopes
+            ? {
+                  scope: lightdashConfig.auth.oidc.scopes,
+              }
+            : {},
+    ),
+);
+
+apiV1Router.get(lightdashConfig.auth.oidc.callbackPath, (req, res, next) =>
+    passport.authenticate('oidc', {
+        failureRedirect: getOidcRedirectURL(false)(req),
+        successRedirect: getOidcRedirectURL(true)(req),
+        failureFlash: true,
+    })(req, res, next),
 );
 
 apiV1Router.get(
@@ -114,33 +120,49 @@ apiV1Router.get(
     }),
 );
 
-apiV1Router.get(
-    lightdashConfig.auth.oneLogin.callbackPath,
+apiV1Router.get(lightdashConfig.auth.oneLogin.callbackPath, (req, res, next) =>
     passport.authenticate('oneLogin', {
-        failureRedirect: '/api/v1/oauth/failure',
-        successRedirect: '/api/v1/oauth/success',
+        failureRedirect: getOidcRedirectURL(false)(req),
+        successRedirect: getOidcRedirectURL(true)(req),
         failureFlash: true,
-    }),
+    })(req, res, next),
 );
 
 apiV1Router.get(
     lightdashConfig.auth.google.loginPath,
     storeOIDCRedirect,
+    (req, res, next) => {
+        passport.authenticate('google', {
+            scope: ['profile', 'email'],
+            loginHint: getLoginHint(req),
+        })(req, res, next);
+    },
+);
+apiV1Router.get(
+    '/login/gdrive',
+    storeOIDCRedirect,
     passport.authenticate('google', {
-        scope: ['profile', 'email'],
+        scope: [
+            'profile',
+            'email',
+            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/spreadsheets',
+        ],
+        accessType: 'offline',
+        prompt: 'consent',
+        session: false,
+        includeGrantedScopes: true,
     }),
 );
 
-apiV1Router.get(
-    lightdashConfig.auth.google.callbackPath,
+apiV1Router.get(lightdashConfig.auth.google.callbackPath, (req, res, next) => {
     passport.authenticate('google', {
-        failureRedirect: '/api/v1/oauth/failure',
-        successRedirect: '/api/v1/oauth/success',
+        failureRedirect: getOidcRedirectURL(false)(req),
+        successRedirect: getOidcRedirectURL(true)(req),
         failureFlash: true,
-    }),
-);
-apiV1Router.get('/oauth/failure', redirectOIDCFailure);
-apiV1Router.get('/oauth/success', redirectOIDCSuccess);
+        includeGrantedScopes: true,
+    })(req, res, next);
+});
 
 apiV1Router.get('/logout', (req, res, next) => {
     req.logout((err) => {

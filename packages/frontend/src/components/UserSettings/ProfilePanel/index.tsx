@@ -1,89 +1,94 @@
+import { getEmailSchema, type ApiError } from '@lightdash/common';
 import {
+    Anchor,
     Button,
-    Colors,
-    FormGroup,
-    Icon,
-    InputGroup,
-    Intent,
-} from '@blueprintjs/core';
-import { Tooltip2 } from '@blueprintjs/popover2';
-import {
-    ApiError,
-    LightdashUser,
-    UpdateUserArgs,
-    validateEmail,
-} from '@lightdash/common';
-import React, { FC, useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from 'react-query';
-import { lightdashApi } from '../../../api';
+    Flex,
+    Stack,
+    Text,
+    TextInput,
+    Tooltip,
+} from '@mantine/core';
+import { useForm, zodResolver } from '@mantine/form';
+import { IconAlertCircle, IconCircleCheck } from '@tabler/icons-react';
+import { useEffect, useState, type FC } from 'react';
+import { z } from 'zod';
 import useToaster from '../../../hooks/toaster/useToaster';
 import {
     useEmailStatus,
     useOneTimePassword,
 } from '../../../hooks/useEmailVerification';
+import { useUserUpdateMutation } from '../../../hooks/user/useUserUpdateMutation';
 import { VerifyEmailModal } from '../../../pages/VerifyEmail';
-import { useApp } from '../../../providers/AppProvider';
-import { useErrorLogs } from '../../../providers/ErrorLogsProvider';
-import {
-    EmailVerificationCTA,
-    EmailVerificationCTALink,
-    EmailVerificationIcon,
-} from './ProfilePanel.styles';
+import useApp from '../../../providers/App/useApp';
+import MantineIcon from '../../common/MantineIcon';
 
-const updateUserQuery = async (data: Partial<UpdateUserArgs>) =>
-    lightdashApi<LightdashUser>({
-        url: `/user/me`,
-        method: 'PATCH',
-        body: JSON.stringify(data),
-    });
+const validationSchema = z.object({
+    firstName: z.string().nonempty(),
+    lastName: z.string().nonempty(),
+    email: getEmailSchema().or(z.undefined()),
+});
+
+type FormValues = z.infer<typeof validationSchema>;
 
 const ProfilePanel: FC = () => {
-    const queryClient = useQueryClient();
-    const { user, health } = useApp();
-    const { showToastSuccess, showToastError } = useToaster();
-    const { showError } = useErrorLogs();
+    const {
+        user: { data: userData, isLoading: isLoadingUser },
+        health,
+    } = useApp();
+    const { showToastSuccess, showToastApiError } = useToaster();
+
+    const form = useForm<FormValues>({
+        validate: zodResolver(validationSchema),
+    });
+
+    useEffect(() => {
+        if (!userData) return;
+
+        const initialValues = {
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            email: userData.email,
+        };
+
+        if (form.initialized) {
+            form.setInitialValues(initialValues);
+            form.setValues(initialValues);
+        } else {
+            form.initialize(initialValues);
+        }
+
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userData]);
 
     const isEmailServerConfigured = health.data?.hasEmailClient;
-    const { data, isLoading: statusLoading } = useEmailStatus();
+    const { data, isInitialLoading: statusLoading } = useEmailStatus(
+        !!health.data?.isAuthenticated,
+    );
     const {
         mutate: sendVerificationEmail,
         error: sendVerificationEmailError,
         isLoading: emailLoading,
     } = useOneTimePassword();
 
-    const [firstName, setFirstName] = useState<string | undefined>(
-        user.data?.firstName,
-    );
-    const [lastName, setLastName] = useState<string | undefined>(
-        user.data?.lastName,
-    );
-    const [email, setEmail] = useState<string | undefined>(user.data?.email);
     const [showVerifyEmailModal, setShowVerifyEmailModal] =
         useState<boolean>(false);
 
-    const { isLoading, error, mutate } = useMutation<
-        LightdashUser,
-        ApiError,
-        Partial<UpdateUserArgs>
-    >(updateUserQuery, {
-        mutationKey: ['user_update'],
-        onSuccess: async () => {
-            await queryClient.refetchQueries('user');
-            await queryClient.refetchQueries('email_status');
-            showToastSuccess({
-                title: 'Success! User details were updated.',
-            });
-        },
-    });
+    const { isLoading: isUpdatingUser, mutate: updateUser } =
+        useUserUpdateMutation({
+            onSuccess: () => {
+                showToastSuccess({
+                    title: 'Success! User details were updated.',
+                });
+            },
+            onError: ({ error }: ApiError) => {
+                showToastApiError({
+                    title: 'Failed to update user details',
+                    apiError: error,
+                });
+            },
+        });
 
     useEffect(() => {
-        if (error) {
-            const [title, ...rest] = error.error.message.split('\n');
-            showError({
-                title,
-                body: rest.join('\n'),
-            });
-        }
         if (
             sendVerificationEmailError ||
             data?.isVerified ||
@@ -91,132 +96,113 @@ const ProfilePanel: FC = () => {
         ) {
             setShowVerifyEmailModal(false);
         }
-    }, [sendVerificationEmailError, data, error, showError]);
+    }, [data?.isVerified, isEmailServerConfigured, sendVerificationEmailError]);
 
-    const handleUpdate = () => {
-        if (firstName && lastName && email && validateEmail(email)) {
-            mutate({
-                firstName,
-                lastName,
-                email,
-            });
-        } else {
-            const title =
-                email && !validateEmail(email)
-                    ? 'Invalid email'
-                    : 'Required fields: first name, last name and email';
-            showToastError({
-                title,
-                timeout: 3000,
-            });
-        }
-    };
+    const handleOnSubmit = form.onSubmit((formValues) => {
+        if (!form.isValid()) return;
+        updateUser(formValues);
+    });
+
+    const isLoading = isLoadingUser || isUpdatingUser || !form.initialized;
 
     return (
-        <div
-            style={{
-                height: 'fit-content',
-                display: 'flex',
-                flexDirection: 'column',
-            }}
-        >
-            <FormGroup
-                label="First name"
-                labelFor="first-name-input"
-                labelInfo="(required)"
-            >
-                <InputGroup
-                    id="first-name-input"
+        <form onSubmit={handleOnSubmit}>
+            <Stack mt="md">
+                <TextInput
                     placeholder="First name"
+                    label="First name"
                     type="text"
                     required
                     disabled={isLoading}
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    data-cy="first-name-input"
+                    {...form.getInputProps('firstName')}
                 />
-            </FormGroup>
-            <FormGroup
-                label="Last name"
-                labelFor="last-name-input"
-                labelInfo="(required)"
-            >
-                <InputGroup
-                    id="last-name-input"
+
+                <TextInput
                     placeholder="Last name"
+                    label="Last name"
                     type="text"
                     required
                     disabled={isLoading}
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    data-cy="last-name-input"
+                    {...form.getInputProps('lastName')}
                 />
-            </FormGroup>
-            <FormGroup
-                label="Email"
-                labelFor="email-input"
-                labelInfo="(required)"
-            >
-                <InputGroup
-                    id="email-input"
+
+                <TextInput
                     placeholder="Email"
+                    label="Email"
                     type="email"
                     required
                     disabled={isLoading}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value.trim())}
-                    data-cy="email-input"
-                    rightElement={
+                    inputWrapperOrder={[
+                        'label',
+                        'input',
+                        'error',
+                        'description',
+                    ]}
+                    {...form.getInputProps('email')}
+                    rightSection={
                         isEmailServerConfigured && data?.isVerified ? (
-                            <Tooltip2 content="This e-mail has been verified">
-                                <EmailVerificationIcon
-                                    icon="tick-circle"
-                                    color={Colors.GREEN4}
+                            <Tooltip label="This e-mail has been verified">
+                                <MantineIcon
+                                    size="lg"
+                                    icon={IconCircleCheck}
+                                    color="green.6"
                                 />
-                            </Tooltip2>
-                        ) : isEmailServerConfigured && !data?.isVerified ? (
-                            <EmailVerificationIcon
-                                icon="issue"
-                                color={Colors.GRAY3}
+                            </Tooltip>
+                        ) : (
+                            <MantineIcon
+                                size="lg"
+                                icon={IconAlertCircle}
+                                color="gray.6"
                             />
-                        ) : undefined
+                        )
+                    }
+                    descriptionProps={{ mt: 'xs' }}
+                    description={
+                        isEmailServerConfigured && !data?.isVerified ? (
+                            <Text color="dimmed">
+                                This email has not been verified.{' '}
+                                <Anchor
+                                    component="span"
+                                    onClick={() => {
+                                        if (!data?.otp) {
+                                            sendVerificationEmail();
+                                        }
+                                        setShowVerifyEmailModal(true);
+                                    }}
+                                >
+                                    Click here to verify it
+                                </Anchor>
+                                .
+                            </Text>
+                        ) : null
                     }
                 />
-                {isEmailServerConfigured && !data?.isVerified ? (
-                    <EmailVerificationCTA>
-                        This email has not been verified.{' '}
-                        <EmailVerificationCTALink
-                            onClick={() => {
-                                if (!data?.otp) {
-                                    sendVerificationEmail();
-                                }
-                                setShowVerifyEmailModal(true);
-                            }}
-                        >
-                            Click here to verify it.
-                        </EmailVerificationCTALink>
-                    </EmailVerificationCTA>
-                ) : (
-                    <></>
-                )}
-            </FormGroup>
-            <div style={{ flex: 1 }} />
-            <Button
-                style={{ alignSelf: 'flex-end', marginTop: 20 }}
-                intent={Intent.PRIMARY}
-                text="Update"
-                onClick={handleUpdate}
-                loading={isLoading}
-                data-cy="update-profile-settings"
-            />
-            <VerifyEmailModal
-                opened={showVerifyEmailModal}
-                onClose={() => {
-                    setShowVerifyEmailModal(false);
-                }}
-                isLoading={statusLoading || emailLoading}
-            />
-        </div>
+
+                <Flex justify="flex-end" gap="sm">
+                    {form.isDirty() && !isUpdatingUser && (
+                        <Button variant="outline" onClick={() => form.reset()}>
+                            Cancel
+                        </Button>
+                    )}
+                    <Button
+                        type="submit"
+                        display="block"
+                        loading={isLoading}
+                        disabled={!form.isDirty()}
+                    >
+                        Update
+                    </Button>
+                </Flex>
+
+                <VerifyEmailModal
+                    opened={showVerifyEmailModal}
+                    onClose={() => {
+                        setShowVerifyEmailModal(false);
+                    }}
+                    isLoading={statusLoading || emailLoading}
+                />
+            </Stack>
+        </form>
     );
 };
 

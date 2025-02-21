@@ -1,8 +1,10 @@
 import {
     CreateWarehouseCredentials,
     DbtProjectEnvironmentVariable,
+    SupportedDbtVersions,
 } from '@lightdash/common';
 import { WarehouseClient } from '@lightdash/warehouses';
+import { LightdashAnalytics } from '../analytics/LightdashAnalytics';
 import { CachedWarehouse } from '../types';
 import { DbtGitProjectAdapter } from './dbtGitProjectAdapter';
 
@@ -19,6 +21,10 @@ type DbtGitlabProjectAdapterArgs = {
     targetName: string | undefined;
     environment: DbtProjectEnvironmentVariable[] | undefined;
     cachedWarehouse: CachedWarehouse;
+    dbtVersion: SupportedDbtVersions;
+    useDbtLs: boolean;
+    selector?: string;
+    analytics?: LightdashAnalytics;
 };
 
 export class DbtGitlabProjectAdapter extends DbtGitProjectAdapter {
@@ -33,19 +39,28 @@ export class DbtGitlabProjectAdapter extends DbtGitProjectAdapter {
         targetName,
         environment,
         cachedWarehouse,
+        dbtVersion,
+        useDbtLs,
+        selector,
+        analytics,
     }: DbtGitlabProjectAdapterArgs) {
-        const remoteRepositoryUrl = `https://:${gitlabPersonalAccessToken}@${
+        const remoteRepositoryUrl = `https://lightdash:${gitlabPersonalAccessToken}@${
             hostDomain || DEFAULT_GITLAB_HOST_DOMAIN
         }/${gitlabRepository}.git`;
         super({
             warehouseClient,
             gitBranch: gitlabBranch,
             remoteRepositoryUrl,
+            repository: gitlabRepository,
             projectDirectorySubPath,
             warehouseCredentials,
             targetName,
             environment,
             cachedWarehouse,
+            dbtVersion,
+            useDbtLs,
+            selector,
+            analytics,
         });
     }
 }

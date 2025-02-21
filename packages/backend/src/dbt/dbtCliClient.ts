@@ -1,21 +1,23 @@
 import {
+    AnyType,
+    assertUnreachable,
     DbtError,
     DbtLog,
     DbtPackages,
-    DbtRpcDocsGenerateResults,
     DbtRpcGetManifestResults,
+    getErrorMessage,
     isDbtLog,
     isDbtPackages,
-    isDbtRpcDocsGenerateResults,
     isDbtRpcManifestResults,
     ParseError,
+    SupportedDbtVersions,
 } from '@lightdash/common';
 import * as Sentry from '@sentry/node';
-import execa from 'execa';
+import execa, { ExecaError, ExecaReturnValue } from 'execa';
 import * as fs from 'fs/promises';
 import yaml, { dump as dumpYaml, load as loadYaml } from 'js-yaml';
 import path from 'path';
-import Logger from '../logger';
+import Logger from '../logging/logger';
 import { DbtClient } from '../types';
 
 type DbtProjectConfig = {
@@ -27,7 +29,7 @@ type RawDbtProjectConfig = {
     'target-dir'?: string;
 };
 
-const isRawDbtConfig = (raw: any): raw is RawDbtProjectConfig =>
+const isRawDbtConfig = (raw: AnyType): raw is RawDbtProjectConfig =>
     typeof raw === 'object' &&
     raw !== null &&
     (raw['target-dir'] === undefined || typeof raw['target-dir'] === 'string');
@@ -41,7 +43,9 @@ export const getDbtConfig = async (
         config = loadYaml(await fs.readFile(configPath, 'utf-8'));
     } catch (e) {
         throw new ParseError(
-            `dbt_project.yml was not found or isn't a valid yaml document: ${e.message}`,
+            `dbt_project.yml was not found or isn't a valid yaml document: ${getErrorMessage(
+                e,
+            )}`,
             {},
         );
     }
@@ -64,7 +68,19 @@ type DbtCliArgs = {
     environment: Record<string, string>;
     profileName?: string;
     target?: string;
+    dbtVersion: SupportedDbtVersions;
+    useDbtLs?: boolean;
+    selector?: string;
 };
+
+enum DbtCommands {
+    DBT_1_4 = 'dbt',
+    DBT_1_5 = 'dbt1.5',
+    DBT_1_6 = 'dbt1.6',
+    DBT_1_7 = 'dbt1.7',
+    DBT_1_8 = 'dbt1.8',
+    DBT_1_9 = 'dbt1.9',
+}
 
 export class DbtCliClient implements DbtClient {
     dbtProjectDirectory: string;
@@ -79,12 +95,21 @@ export class DbtCliClient implements DbtClient {
 
     targetDirectory: string | undefined;
 
+    dbtVersion: SupportedDbtVersions;
+
+    useDbtLs: boolean;
+
+    selector?: string;
+
     constructor({
         dbtProjectDirectory,
         dbtProfilesDirectory,
         environment,
         profileName,
         target,
+        dbtVersion,
+        useDbtLs,
+        selector,
     }: DbtCliArgs) {
         this.dbtProjectDirectory = dbtProjectDirectory;
         this.dbtProfilesDirectory = dbtProfilesDirectory;
@@ -92,6 +117,13 @@ export class DbtCliClient implements DbtClient {
         this.profileName = profileName;
         this.target = target;
         this.targetDirectory = undefined;
+        this.dbtVersion = dbtVersion;
+        this.useDbtLs = useDbtLs ?? false;
+        this.selector = selector;
+    }
+
+    getSelector(): string | undefined {
+        return this.selector;
     }
 
     private async _getTargetDirectory(): Promise<string> {
@@ -118,7 +150,30 @@ export class DbtCliClient implements DbtClient {
         }, []);
     }
 
+    getDbtExec(): string {
+        switch (this.dbtVersion) {
+            case SupportedDbtVersions.V1_4:
+                return DbtCommands.DBT_1_4;
+            case SupportedDbtVersions.V1_5:
+                return DbtCommands.DBT_1_5;
+            case SupportedDbtVersions.V1_6:
+                return DbtCommands.DBT_1_6;
+            case SupportedDbtVersions.V1_7:
+                return DbtCommands.DBT_1_7;
+            case SupportedDbtVersions.V1_8:
+                return DbtCommands.DBT_1_8;
+            case SupportedDbtVersions.V1_9:
+                return DbtCommands.DBT_1_9;
+            default:
+                return assertUnreachable(
+                    this.dbtVersion,
+                    'Missing dbt version command mapping',
+                );
+        }
+    }
+
     private async _runDbtCommand(...command: string[]): Promise<DbtLog[]> {
+        const dbtExec = this.getDbtExec();
         const dbtArgs = [
             '--no-use-colors',
             '--log-format',
@@ -129,61 +184,105 @@ export class DbtCliClient implements DbtClient {
             '--project-dir',
             this.dbtProjectDirectory,
         ];
+
         if (this.target) {
             dbtArgs.push('--target', this.target);
         }
         if (this.profileName) {
             dbtArgs.push('--profile', this.profileName);
         }
+
         try {
-            Logger.debug(`Running dbt command: dbt ${dbtArgs.join(' ')}`);
-            const dbtProcess = await execa('dbt', dbtArgs, {
+            Logger.debug(
+                `Running dbt command with version "${
+                    this.dbtVersion
+                }": ${dbtExec} ${dbtArgs.join(' ')}`,
+            );
+            const dbtProcess = await execa(dbtExec, dbtArgs, {
                 all: true,
                 stdio: ['pipe', 'pipe', process.stderr],
                 env: {
+                    DBT_PARTIAL_PARSE: 'false', // Disable dbt from storing manifest and doing partial parses. https://docs.getdbt.com/reference/parsing#partial-parsing
+                    DBT_SEND_ANONYMOUS_USAGE_STATS: 'false', // Disable sending usage stats. https://docs.getdbt.com/reference/global-configs/usage-stats
                     ...this.environment,
                 },
             });
             return DbtCliClient.parseDbtJsonLogs(dbtProcess.all);
         } catch (e) {
-            throw new DbtError(
-                `Failed to run "dbt ${command.join(' ')}"`,
-                DbtCliClient.parseDbtJsonLogs(e.all),
+            Logger.error(
+                `Error running dbt command with version ${
+                    this.dbtVersion
+                }: ${getErrorMessage(e)}`,
             );
+            // TODO parse ExecaError
+            const execaError = e as Partial<ExecaError>;
+            if (
+                execaError &&
+                'all' in execaError &&
+                typeof execaError.all === 'string'
+            ) {
+                throw new DbtError(
+                    `Failed to run "${dbtExec} ${command.join(
+                        ' ',
+                    )}" with dbt version "${this.dbtVersion}"`,
+                    DbtCliClient.parseDbtJsonLogs(execaError.all),
+                );
+            }
+            throw e;
         }
     }
 
     async installDeps(): Promise<void> {
-        const transaction = Sentry.getCurrentHub()
-            ?.getScope()
-            ?.getTransaction();
-        const span = transaction?.startChild({
-            op: 'dbt',
-            description: 'installDeps',
-        });
-        await this._runDbtCommand('deps');
-        span?.finish();
+        return Sentry.startSpan(
+            {
+                op: 'dbt',
+                name: 'installDeps',
+            },
+            async () => {
+                await this._runDbtCommand('deps');
+            },
+        );
+    }
+
+    static validateSelector(selector: string): boolean {
+        // eslint-disable-next-line no-useless-escape
+        const validSelectorPattern = /^@?[a-zA-Z0-9\s\*\-\.\+:_]+$/;
+        return validSelectorPattern.test(selector);
     }
 
     async getDbtManifest(): Promise<DbtRpcGetManifestResults> {
-        const transaction = Sentry.getCurrentHub()
-            ?.getScope()
-            ?.getTransaction();
-        const span = transaction?.startChild({
-            op: 'dbt',
-            description: 'getDbtManifest',
-        });
-        const dbtLogs = await this._runDbtCommand('compile');
-        const rawManifest = {
-            manifest: await this.loadDbtTargetArtifact('manifest.json'),
-        };
-        span?.finish();
-        if (isDbtRpcManifestResults(rawManifest)) {
-            return rawManifest;
-        }
-        throw new DbtError(
-            'Cannot read response from dbt, manifest.json not valid',
-            dbtLogs,
+        return Sentry.startSpan(
+            {
+                op: 'dbt',
+                name: 'getDbtManifest',
+                attributes: {
+                    useDbtLs: this.useDbtLs,
+                },
+            },
+            async () => {
+                const dbtCommand = [];
+                const selector = this.selector?.trim();
+
+                if (selector) {
+                    if (!DbtCliClient.validateSelector(selector)) {
+                        throw new ParseError('Invalid dbt selector format');
+                    }
+                    dbtCommand.push('compile', '--select', `${selector}`);
+                } else {
+                    dbtCommand.push(this.useDbtLs ? 'ls' : 'compile');
+                }
+                const logs = await this._runDbtCommand(...dbtCommand);
+                const rawManifest = {
+                    manifest: await this.loadDbtTargetArtifact('manifest.json'),
+                };
+                if (isDbtRpcManifestResults(rawManifest)) {
+                    return rawManifest;
+                }
+                throw new DbtError(
+                    'Cannot read response from dbt, manifest.json not valid',
+                    logs,
+                );
+            },
         );
     }
 
@@ -205,8 +304,9 @@ export class DbtCliClient implements DbtClient {
         }
     }
 
-    private async loadDbtTargetArtifact(filename: string): Promise<any> {
+    private async loadDbtTargetArtifact(filename: string): Promise<AnyType> {
         const targetDir = await this._getTargetDirectory();
+
         const fullPath = path.join(
             this.dbtProjectDirectory,
             targetDir,
@@ -218,7 +318,7 @@ export class DbtCliClient implements DbtClient {
     static async loadDbtFile(
         fullPath: string,
         fileType: 'JSON' | 'YML' = 'JSON',
-    ): Promise<any> {
+    ): Promise<AnyType> {
         try {
             Logger.debug(`Load dbt artifact: ${fullPath}`);
             const file = await fs.readFile(fullPath, 'utf-8');
@@ -233,36 +333,16 @@ export class DbtCliClient implements DbtClient {
         }
     }
 
-    async getDbtCatalog(): Promise<DbtRpcDocsGenerateResults> {
-        const transaction = Sentry.getCurrentHub()
-            ?.getScope()
-            ?.getTransaction();
-        const span = transaction?.startChild({
-            op: 'dbt',
-            description: 'getDbtbCatalog',
-        });
-        const dbtLogs = await this._runDbtCommand('docs', 'generate');
-        const rawCatalog = await this.loadDbtTargetArtifact('catalog.json');
-        span?.finish();
-        if (isDbtRpcDocsGenerateResults(rawCatalog)) {
-            return rawCatalog;
-        }
-        throw new DbtError(
-            'Cannot read response from dbt, catalog.json is not a valid dbt catalog',
-            dbtLogs,
-        );
-    }
-
     async test(): Promise<void> {
-        const transaction = Sentry.getCurrentHub()
-            ?.getScope()
-            ?.getTransaction();
-        const span = transaction?.startChild({
-            op: 'dbt',
-            description: 'test',
-        });
-        await this.installDeps();
-        await this._runDbtCommand('parse');
-        span?.finish();
+        return Sentry.startSpan(
+            {
+                op: 'dbt',
+                name: 'test',
+            },
+            async () => {
+                await this.installDeps();
+                await this._runDbtCommand('parse');
+            },
+        );
     }
 }

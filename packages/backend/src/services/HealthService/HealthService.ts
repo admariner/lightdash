@@ -2,48 +2,57 @@ import {
     HealthState,
     LightdashInstallType,
     LightdashMode,
+    SessionUser,
     UnexpectedDatabaseError,
 } from '@lightdash/common';
+import { createHmac } from 'crypto';
 import { getDockerHubVersion } from '../../clients/DockerHub/DockerHub';
 import { LightdashConfig } from '../../config/parseConfig';
-import { getMigrationStatus } from '../../database/database';
+import { MigrationModel } from '../../models/MigrationModel/MigrationModel';
 import { OrganizationModel } from '../../models/OrganizationModel';
 import { VERSION } from '../../version';
+import { BaseService } from '../BaseService';
 
-type HealthServiceDependencies = {
+type HealthServiceArguments = {
     lightdashConfig: LightdashConfig;
     organizationModel: OrganizationModel;
+    migrationModel: MigrationModel;
 };
 
-export class HealthService {
+export class HealthService extends BaseService {
     private readonly lightdashConfig: LightdashConfig;
 
     private readonly organizationModel: OrganizationModel;
 
+    private readonly migrationModel: MigrationModel;
+
     constructor({
         organizationModel,
+        migrationModel,
         lightdashConfig,
-    }: HealthServiceDependencies) {
+    }: HealthServiceArguments) {
+        super();
         this.lightdashConfig = lightdashConfig;
         this.organizationModel = organizationModel;
+        this.migrationModel = migrationModel;
     }
 
-    private hasSlackConfig(): boolean {
-        return (
-            this.lightdashConfig.slack?.appToken !== undefined &&
-            this.lightdashConfig.slack.signingSecret !== undefined
-        );
-    }
+    async getHealthState(user: SessionUser | undefined): Promise<HealthState> {
+        const isAuthenticated: boolean = !!user?.userUuid;
 
-    async getHealthState(isAuthenticated: boolean): Promise<HealthState> {
-        const { isComplete, currentVersion } = await getMigrationStatus();
+        const { status: migrationStatus, currentVersion } =
+            await this.migrationModel.getMigrationStatus();
 
-        if (!isComplete) {
+        if (migrationStatus < 0) {
             throw new UnexpectedDatabaseError(
                 'Database has not been migrated yet',
                 { currentVersion },
             );
-        }
+        } else if (migrationStatus > 0) {
+            console.warn(
+                `There are more DB migrations than defined in the code (you are running old code against a newer DB). Current version: ${currentVersion}`,
+            );
+        } // else migrationStatus === 0 (all migrations are up to date)
 
         const requiresOrgRegistration =
             !(await this.organizationModel.hasOrgs());
@@ -62,14 +71,39 @@ export class HealthService {
             requiresOrgRegistration,
             latest: { version: getDockerHubVersion() },
             rudder: this.lightdashConfig.rudder,
-            sentry: this.lightdashConfig.sentry,
-            fullstory: this.lightdashConfig.fullstory,
+            sentry: {
+                frontend: this.lightdashConfig.sentry.frontend,
+                environment: this.lightdashConfig.sentry.environment,
+                release: this.lightdashConfig.sentry.release,
+                tracesSampleRate: this.lightdashConfig.sentry.tracesSampleRate,
+                profilesSampleRate:
+                    this.lightdashConfig.sentry.profilesSampleRate,
+            },
             intercom: this.lightdashConfig.intercom,
-            cohere: this.lightdashConfig.cohere,
+            pylon: {
+                appId: this.lightdashConfig.pylon.appId,
+                verificationHash:
+                    this.lightdashConfig.pylon.identityVerificationSecret &&
+                    user?.email
+                        ? createHmac(
+                              'sha256',
+                              this.lightdashConfig.pylon
+                                  .identityVerificationSecret,
+                          )
+                              .update(user?.email)
+                              .digest('hex')
+                        : undefined,
+            },
             siteUrl: this.lightdashConfig.siteUrl,
             staticIp: this.lightdashConfig.staticIp,
+            posthog: this.lightdashConfig.posthog,
             query: this.lightdashConfig.query,
+            pivotTable: this.lightdashConfig.pivotTable,
+            customVisualizationsEnabled:
+                this.lightdashConfig.customVisualizations &&
+                this.lightdashConfig.customVisualizations.enabled,
             hasSlack: this.hasSlackConfig(),
+            hasGithub: process.env.GITHUB_PRIVATE_KEY !== undefined,
             auth: {
                 disablePasswordAuthentication:
                     this.lightdashConfig.auth.disablePasswordAuthentication,
@@ -77,6 +111,9 @@ export class HealthService {
                     loginPath: this.lightdashConfig.auth.google.loginPath,
                     oauth2ClientId:
                         this.lightdashConfig.auth.google.oauth2ClientId,
+                    googleDriveApiKey:
+                        this.lightdashConfig.auth.google.googleDriveApiKey,
+                    enabled: this.isGoogleSSOEnabled(),
                 },
                 okta: {
                     loginPath: this.lightdashConfig.auth.okta.loginPath,
@@ -87,8 +124,41 @@ export class HealthService {
                     enabled:
                         !!this.lightdashConfig.auth.oneLogin.oauth2ClientId,
                 },
+                azuread: {
+                    loginPath: this.lightdashConfig.auth.azuread.loginPath,
+                    enabled: !!this.lightdashConfig.auth.azuread.oauth2ClientId,
+                },
+                oidc: {
+                    loginPath: this.lightdashConfig.auth.oidc.loginPath,
+                    enabled: !!this.lightdashConfig.auth.oidc.clientId,
+                },
+                pat: {
+                    maxExpirationTimeInDays:
+                        this.lightdashConfig.auth.pat.maxExpirationTimeInDays,
+                },
             },
             hasEmailClient: !!this.lightdashConfig.smtp,
+            hasHeadlessBrowser:
+                this.lightdashConfig.headlessBrowser?.host !== undefined,
+            hasExtendedUsageAnalytics:
+                this.lightdashConfig.extendedUsageAnalytics.enabled,
+            hasCacheAutocompleResults:
+                this.lightdashConfig.resultsCache.autocompleteEnabled || false,
         };
+    }
+
+    private hasSlackConfig(): boolean {
+        return (
+            this.lightdashConfig.slack?.clientId !== undefined &&
+            this.lightdashConfig.slack.signingSecret !== undefined
+        );
+    }
+
+    private isGoogleSSOEnabled(): boolean {
+        return (
+            this.lightdashConfig.auth.google.oauth2ClientId !== undefined &&
+            this.lightdashConfig.auth.google.oauth2ClientSecret !== undefined &&
+            this.lightdashConfig.auth.google.enabled
+        );
     }
 }

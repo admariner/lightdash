@@ -1,27 +1,47 @@
-import { SessionUser } from '@lightdash/common';
-import { FC } from 'react';
-import { UpdatedInfoLabel } from '.';
+import { type SessionUser } from '@lightdash/common';
+import { Text } from '@mantine/core';
+import { type FC } from 'react';
 import { useTimeAgo } from '../../../hooks/useTimeAgo';
 
-export const UpdatedInfo: FC<{
+const TimeAgo: FC<{
     updatedAt: Date;
-    user: Partial<SessionUser> | undefined;
-}> = ({ updatedAt, user }) => {
-    const timeAgo = useTimeAgo(updatedAt);
+    partiallyBold?: boolean;
+}> = ({ updatedAt, partiallyBold = true }) => {
+    const timeAgo = useTimeAgo(updatedAt || new Date());
 
     return (
-        <UpdatedInfoLabel>
-            Last edited <b>{timeAgo}</b>{' '}
+        <Text span fw={partiallyBold ? 600 : 'default'}>
+            {timeAgo}
+        </Text>
+    );
+};
+
+export const UpdatedInfo: FC<{
+    updatedAt: Date | undefined;
+    user: Partial<SessionUser> | null | undefined;
+    partiallyBold?: boolean;
+}> = ({ updatedAt, user, partiallyBold = true }) => {
+    return (
+        <Text c="gray.6" fz="xs">
+            Last edited{' '}
+            {updatedAt && (
+                <>
+                    <TimeAgo
+                        updatedAt={updatedAt}
+                        partiallyBold={partiallyBold}
+                    />{' '}
+                </>
+            )}
             {user && user.firstName ? (
                 <>
                     by{' '}
-                    <b>
+                    <Text span fw={partiallyBold ? 600 : 'default'}>
                         {user.firstName} {user.lastName}
-                    </b>
+                    </Text>
                 </>
             ) : (
                 ''
             )}
-        </UpdatedInfoLabel>
+        </Text>
     );
 };

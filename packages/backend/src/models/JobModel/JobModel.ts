@@ -3,6 +3,7 @@ import {
     CreateJob,
     DbtError,
     DbtLog,
+    getErrorMessage,
     Job,
     JobLabels,
     JobStatusType,
@@ -18,15 +19,15 @@ import {
     JobStepsTableName,
 } from '../../database/entities/jobs';
 
-type JobModelDependencies = {
+type JobModelArguments = {
     database: Knex;
 };
 
 export class JobModel {
     private database: Knex;
 
-    constructor(deps: JobModelDependencies) {
-        this.database = deps.database;
+    constructor(args: JobModelArguments) {
+        this.database = args.database;
     }
 
     async get(jobUuid: string): Promise<Job> {
@@ -192,7 +193,7 @@ export class JobModel {
                 jobUuid,
                 JobStepStatusType.ERROR,
                 jobStepType,
-                e.message,
+                getErrorMessage(e),
                 e instanceof DbtError ? e.logs : [],
             );
             await this.update(jobUuid, { jobStatus: JobStatusType.ERROR });

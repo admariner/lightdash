@@ -1,39 +1,47 @@
-import { Anchor, Box, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
-import { createStyles } from '@mantine/styles';
-import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
-import React, { FC, useMemo, useState } from 'react';
-import { Link, useHistory, useParams } from 'react-router-dom';
-import { ResourceViewCommonProps } from '..';
-import { useSpaces } from '../../../../hooks/useSpaces';
 import {
     isResourceViewItemChart,
     isResourceViewItemDashboard,
     isResourceViewSpaceItem,
-    ResourceViewItem,
-} from '../resourceTypeUtils';
-import { getResourceTypeName, getResourceUrl } from '../resourceUtils';
-import { ResourceViewItemActionState } from './../ResourceActionHandlers';
+    type ResourceViewItem,
+} from '@lightdash/common';
+import { Anchor, Box, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
+import {
+    IconAlertTriangleFilled,
+    IconChevronDown,
+    IconChevronUp,
+} from '@tabler/icons-react';
+import React, { useMemo, useState, type FC } from 'react';
+import { Link, useNavigate, useParams } from 'react-router';
+import { useTableStyles } from '../../../../hooks/styles/useTableStyles';
+import { useSpaceSummaries } from '../../../../hooks/useSpaces';
+import { useValidationUserAbility } from '../../../../hooks/validation/useValidation';
+import { ResourceIcon, ResourceIndicator } from '../../ResourceIcon';
+import { ResourceInfoPopup } from '../../ResourceInfoPopup/ResourceInfoPopup';
+import {
+    getResourceTypeName,
+    getResourceUrl,
+    getResourceViewsSinceWhenDescription,
+} from '../resourceUtils';
+import {
+    ResourceSortDirection,
+    type ResourceViewCommonProps,
+    type ResourceViewItemActionState,
+} from '../types';
 import ResourceActionMenu from './../ResourceActionMenu';
-import ResourceIcon from './../ResourceIcon';
 import ResourceLastEdited from './../ResourceLastEdited';
-
-export enum SortDirection {
-    ASC = 'asc',
-    DESC = 'desc',
-}
 
 type ColumnName = 'name' | 'space' | 'updatedAt' | 'actions';
 
 type ColumnVisibilityMap = Map<ColumnName, boolean>;
 
-type SortingState = null | SortDirection;
+type SortingState = null | ResourceSortDirection;
 
 type SortingStateMap = Map<ColumnName, SortingState>;
 
 export interface ResourceViewListCommonProps {
     enableSorting?: boolean;
     enableMultiSort?: boolean;
-    defaultSort?: Partial<Record<ColumnName, SortDirection>>;
+    defaultSort?: Partial<Record<ColumnName, ResourceSortDirection>>;
     defaultColumnVisibility?: Partial<Record<ColumnName, boolean>>;
 }
 
@@ -42,7 +50,7 @@ type ResourceViewListProps = ResourceViewListCommonProps &
         onAction: (newAction: ResourceViewItemActionState) => void;
     };
 
-const sortOrder = [SortDirection.DESC, SortDirection.ASC, null];
+const sortOrder = [ResourceSortDirection.DESC, ResourceSortDirection.ASC, null];
 
 interface Column {
     id: ColumnName;
@@ -60,29 +68,6 @@ const getNextSortDirection = (current: SortingState): SortingState => {
     return sortOrder.concat(sortOrder[0])[currentIndex + 1];
 };
 
-const useTableStyles = createStyles((theme) => ({
-    root: {
-        '& thead tr': {
-            backgroundColor: theme.colors.gray[0],
-        },
-
-        '& thead tr th': {
-            color: theme.colors.gray[6],
-            fontWeight: 600,
-            fontSize: '12px',
-        },
-
-        '& thead tr th, & tbody tr td': {
-            padding: '12px 20px',
-        },
-
-        '&[data-hover] tbody tr': theme.fn.hover({
-            cursor: 'pointer',
-            backgroundColor: theme.fn.rgba(theme.colors.gray[0], 0.5),
-        }),
-    },
-}));
-
 const ResourceViewList: FC<ResourceViewListProps> = ({
     items,
     enableSorting: enableSortingProp = true,
@@ -93,9 +78,10 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
 }) => {
     const { classes } = useTableStyles();
 
-    const history = useHistory();
+    const navigate = useNavigate();
     const { projectUuid } = useParams<{ projectUuid: string }>();
-    const { data: spaces = [] } = useSpaces(projectUuid);
+    const { data: spaces = [] } = useSpaceSummaries(projectUuid);
+    const canUserManageValidation = useValidationUserAbility(projectUuid);
 
     const [columnSorts, setColumnSorts] = useState<SortingStateMap>(
         defaultSort ? new Map(Object.entries(defaultSort)) : new Map(),
@@ -106,9 +92,11 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
             : new Map(),
     );
 
+    const [hoveredItem, setHoveredItem] = useState<string>();
+
     const handleSort = (
         columnId: ColumnName,
-        direction: null | SortDirection,
+        direction: null | ResourceSortDirection,
     ) => {
         setColumnSorts(
             enableMultiSort
@@ -125,53 +113,143 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                 id: 'name',
                 label: 'Name',
                 cell: (item: ResourceViewItem) => {
+                    if (!projectUuid) {
+                        return null;
+                    }
+
                     const canBelongToSpace =
                         isResourceViewItemChart(item) ||
                         isResourceViewItemDashboard(item);
 
                     return (
-                        <Tooltip
-                            withArrow
-                            disabled={
-                                canBelongToSpace ? !item.data.description : true
-                            }
-                            label={
-                                canBelongToSpace
-                                    ? item.data.description
-                                    : undefined
-                            }
-                            position="top-start"
-                        >
-                            <Anchor
-                                component={Link}
-                                sx={{
+                        <Anchor
+                            component={Link}
+                            sx={{
+                                color: 'unset',
+                                ':hover': {
                                     color: 'unset',
-                                    ':hover': {
-                                        color: 'unset',
-                                        textDecoration: 'none',
-                                    },
-                                }}
-                                to={getResourceUrl(projectUuid, item)}
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                <Group noWrap>
+                                    textDecoration: 'none',
+                                },
+                            }}
+                            to={getResourceUrl(projectUuid, item)}
+                            onClick={(e: React.MouseEvent<HTMLAnchorElement>) =>
+                                e.stopPropagation()
+                            }
+                        >
+                            <Group noWrap>
+                                {canBelongToSpace &&
+                                item.data.validationErrors?.length ? (
+                                    <ResourceIndicator
+                                        iconProps={{
+                                            icon: IconAlertTriangleFilled,
+                                            color: 'red',
+                                        }}
+                                        tooltipProps={{
+                                            maw: 300,
+                                            withinPortal: true,
+                                            multiline: true,
+                                            offset: -2,
+                                            position: 'bottom',
+                                        }}
+                                        tooltipLabel={
+                                            canUserManageValidation ? (
+                                                <>
+                                                    This content is broken.
+                                                    Learn more about the
+                                                    validation error(s){' '}
+                                                    <Anchor
+                                                        component={Link}
+                                                        fw={600}
+                                                        to={{
+                                                            pathname: `/generalSettings/projectManagement/${projectUuid}/validator`,
+                                                            search: `?validationId=${item.data.validationErrors[0].validationId}`,
+                                                        }}
+                                                        color="blue.4"
+                                                    >
+                                                        here
+                                                    </Anchor>
+                                                    .
+                                                </>
+                                            ) : (
+                                                <>
+                                                    There's an error with this{' '}
+                                                    {isResourceViewItemChart(
+                                                        item,
+                                                    )
+                                                        ? 'chart'
+                                                        : 'dashboard'}
+                                                    .
+                                                </>
+                                            )
+                                        }
+                                    >
+                                        <ResourceIcon item={item} />
+                                    </ResourceIndicator>
+                                ) : (
                                     <ResourceIcon item={item} />
+                                )}
 
-                                    <Stack spacing={2}>
-                                        <Text fw={600} lineClamp={1}>
+                                <Stack spacing={2}>
+                                    <Group spacing="xs" noWrap>
+                                        <Text
+                                            fw={600}
+                                            lineClamp={1}
+                                            sx={{ overflowWrap: 'anywhere' }}
+                                        >
                                             {item.data.name}
                                         </Text>
-
-                                        {canBelongToSpace && (
-                                            <Text fz={12} color="gray.6">
-                                                {getResourceTypeName(item)} •{' '}
-                                                {item.data.views || '0'} views
-                                            </Text>
-                                        )}
-                                    </Stack>
-                                </Group>
-                            </Anchor>
-                        </Tooltip>
+                                        {!isResourceViewSpaceItem(item) &&
+                                            // If there is no description, don't show the info icon on dashboards.
+                                            // For charts we still show it for the dashboard list
+                                            (item.data.description ||
+                                                isResourceViewItemChart(
+                                                    item,
+                                                )) &&
+                                            canBelongToSpace &&
+                                            hoveredItem === item.data.uuid &&
+                                            projectUuid && (
+                                                <Box>
+                                                    <ResourceInfoPopup
+                                                        resourceUuid={
+                                                            item.data.uuid
+                                                        }
+                                                        projectUuid={
+                                                            projectUuid
+                                                        }
+                                                        description={
+                                                            item.data
+                                                                .description
+                                                        }
+                                                        withChartData={isResourceViewItemChart(
+                                                            item,
+                                                        )}
+                                                    />
+                                                </Box>
+                                            )}
+                                    </Group>
+                                    {canBelongToSpace && (
+                                        <Text fz={12} color="gray.6">
+                                            {getResourceTypeName(item)} •{' '}
+                                            <Tooltip
+                                                position="top-start"
+                                                disabled={
+                                                    !item.data.views ||
+                                                    !item.data.firstViewedAt
+                                                }
+                                                label={getResourceViewsSinceWhenDescription(
+                                                    item,
+                                                )}
+                                            >
+                                                <span>
+                                                    {item.data.views || '0'}{' '}
+                                                    views
+                                                </span>
+                                            </Tooltip>
+                                        </Text>
+                                    )}
+                                </Stack>
+                            </Group>
+                        </Anchor>
                     );
                 },
                 enableSorting,
@@ -182,8 +260,8 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                     style: {
                         width:
                             columnVisibility.get('space') === false
-                                ? '75%'
-                                : '50%',
+                                ? '80%'
+                                : '65%',
                     },
                 },
             },
@@ -204,7 +282,9 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                             color="gray.7"
                             component={Link}
                             to={`/projects/${projectUuid}/spaces/${space.uuid}`}
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e: React.MouseEvent<HTMLAnchorElement>) =>
+                                e.stopPropagation()
+                            }
                             fz={12}
                             fw={500}
                         >
@@ -234,7 +314,7 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                         width:
                             columnVisibility.get('space') === false
                                 ? undefined
-                                : '25%',
+                                : '15%',
                     },
                 },
             },
@@ -260,7 +340,7 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                     );
                 },
                 meta: {
-                    style: { width: '25%' },
+                    style: { width: '20%' },
                 },
             },
             {
@@ -268,7 +348,7 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                 cell: (item: ResourceViewItem) => (
                     <Box
                         component="div"
-                        onClick={(e) => {
+                        onClick={(e: React.MouseEvent<HTMLDivElement>) => {
                             e.stopPropagation();
                             e.preventDefault();
                         }}
@@ -282,7 +362,15 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                 },
             },
         ],
-        [columnVisibility, enableSorting, spaces, projectUuid, onAction],
+        [
+            enableSorting,
+            columnVisibility,
+            projectUuid,
+            canUserManageValidation,
+            spaces,
+            onAction,
+            hoveredItem,
+        ],
     );
 
     const visibleColumns = useMemo(() => {
@@ -313,9 +401,9 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                     const sortResult = column.sortingFn(a, b) ?? 0;
 
                     switch (sortDirection) {
-                        case SortDirection.ASC:
+                        case ResourceSortDirection.ASC:
                             return acc + sortResult;
-                        case SortDirection.DESC:
+                        case ResourceSortDirection.DESC:
                             return acc - sortResult;
                         default:
                             return acc;
@@ -382,8 +470,11 @@ const ResourceViewList: FC<ResourceViewListProps> = ({
                     <tr
                         key={item.data.uuid}
                         onClick={() =>
-                            history.push(getResourceUrl(projectUuid, item))
+                            projectUuid &&
+                            navigate(getResourceUrl(projectUuid, item))
                         }
+                        onMouseEnter={() => setHoveredItem(item.data.uuid)}
+                        onMouseLeave={() => setHoveredItem(undefined)}
                     >
                         {visibleColumns.map((column) => (
                             <td key={column.id}>{column.cell(item)}</td>

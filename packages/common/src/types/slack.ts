@@ -5,5 +5,22 @@ export type SlackChannel = {
 
 export type ApiSlackChannelsResponse = {
     status: 'ok';
-    results: SlackChannel[];
+    results: SlackChannel[] | undefined;
+};
+
+export type ApiSlackCustomSettingsResponse = {
+    status: 'ok';
+    results: void;
+};
+
+export type SlackChannelProjectMapping = {
+    projectUuid: string;
+    slackChannelId: string;
+    availableTags: string[] | null;
+};
+
+export type SlackAppCustomSettings = {
+    notificationChannel: string | null;
+    appProfilePhotoUrl: string | null;
+    slackChannelProjectMappings?: SlackChannelProjectMapping[];
 };

@@ -1,29 +1,52 @@
-import { HTMLSelect } from '@blueprintjs/core';
-import { ConditionalRule, FilterOperator } from '@lightdash/common';
-import DefaultFilterInputs, { FilterInputsProps } from './DefaultFilterInputs';
+import {
+    FilterOperator,
+    isFilterRule,
+    type ConditionalRule,
+} from '@lightdash/common';
+import { Select } from '@mantine/core';
+import { type FilterInputsProps } from '.';
+import { getPlaceholderByFilterTypeAndOperator } from '../utils/getPlaceholderByFilterTypeAndOperator';
+import DefaultFilterInputs from './DefaultFilterInputs';
 
 const BooleanFilterInputs = <T extends ConditionalRule>(
-    props: React.PropsWithChildren<FilterInputsProps<T>>,
+    props: FilterInputsProps<T>,
 ) => {
-    const { rule, onChange, disabled } = props;
+    const { rule, onChange, disabled, filterType, popoverProps } = props;
+
+    const isFilterRuleDisabled = isFilterRule(rule) && rule.disabled;
+
+    const placeholder = getPlaceholderByFilterTypeAndOperator({
+        type: filterType,
+        operator: rule.operator,
+        disabled: isFilterRuleDisabled,
+    });
+
     switch (rule.operator) {
         case FilterOperator.EQUALS: {
+            const currentValue = rule.values?.[0]?.toString() ?? null;
+
             return (
-                <HTMLSelect
-                    fill
-                    className={disabled ? 'disabled-filter' : ''}
+                <Select
+                    w="100%"
+                    size="xs"
+                    withinPortal={popoverProps?.withinPortal}
+                    onDropdownOpen={popoverProps?.onOpen}
+                    onDropdownClose={popoverProps?.onClose}
                     disabled={disabled}
-                    onChange={(e) =>
-                        onChange({
-                            ...rule,
-                            values: [e.currentTarget.value === 'true'],
-                        })
-                    }
-                    options={[
+                    autoFocus={true}
+                    initiallyOpened={currentValue === null && !disabled}
+                    placeholder={placeholder}
+                    data={[
                         { value: 'true', label: 'True' },
                         { value: 'false', label: 'False' },
                     ]}
-                    value={rule.values?.[0] ? 'true' : 'false'}
+                    value={currentValue}
+                    onChange={(value) =>
+                        onChange({
+                            ...rule,
+                            values: value === null ? [] : [value === 'true'],
+                        })
+                    }
                 />
             );
         }

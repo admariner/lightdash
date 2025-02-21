@@ -1,58 +1,39 @@
 import {
-    attachTypesToModels,
-    convertExplores,
+    AnyType,
+    DEFAULT_SPOTLIGHT_CONFIG,
+    DbtManifestVersion,
     DbtMetric,
     DbtModelNode,
     DbtPackages,
     DbtRawModelNode,
     Explore,
     ExploreError,
-    friendlyName,
-    getSchemaStructureFromDbtModels,
     InlineError,
     InlineErrorType,
-    isSupportedDbtAdapter,
+    ManifestValidator,
     MissingCatalogEntryError,
-    normaliseModelDatabase,
+    NotFoundError,
     ParseError,
     SupportedDbtAdapter,
+    SupportedDbtVersions,
+    attachTypesToModels,
+    convertExplores,
+    friendlyName,
+    getCompiledModels,
+    getDbtManifestVersion,
+    getModelsFromManifest,
+    getSchemaStructureFromDbtModels,
+    isSupportedDbtAdapter,
+    loadLightdashProjectConfig,
+    normaliseModelDatabase,
+    type LightdashProjectConfig,
 } from '@lightdash/common';
 import { WarehouseClient } from '@lightdash/warehouses';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
-import { AnyValidateFunction } from 'ajv/dist/types';
-import Logger from '../logger';
-import dbtManifestSchema from '../manifestv7.json';
-import lightdashDbtSchema from '../schema.json';
+import fs from 'fs/promises';
+import path from 'path';
+import { LightdashAnalytics } from '../analytics/LightdashAnalytics';
+import Logger from '../logging/logger';
 import { CachedWarehouse, DbtClient, ProjectAdapter } from '../types';
-
-const ajv = new Ajv({ schemas: [lightdashDbtSchema, dbtManifestSchema] });
-addFormats(ajv);
-
-const getModelValidator = () => {
-    const modelValidator = ajv.getSchema<DbtRawModelNode>(
-        'https://schemas.lightdash.com/dbt/manifest/v7.json#/definitions/LightdashCompiledModelNode',
-    );
-    if (modelValidator === undefined) {
-        throw new ParseError('Could not parse Lightdash schema.');
-    }
-    return modelValidator;
-};
-
-const getMetricValidator = () => {
-    const metricValidator = ajv.getSchema<DbtMetric>(
-        'https://schemas.getdbt.com/dbt/manifest/v7.json#/definitions/ParsedMetric',
-    );
-    if (metricValidator === undefined) {
-        throw new ParseError('Could not parse dbt schema.');
-    }
-    return metricValidator;
-};
-
-const formatAjvErrors = (validator: AnyValidateFunction): string =>
-    (validator.errors || [])
-        .map((err) => `Field at "${err.instancePath}" ${err.message}`)
-        .join('\n');
 
 export class DbtBaseProjectAdapter implements ProjectAdapter {
     dbtClient: DbtClient;
@@ -61,14 +42,26 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
 
     cachedWarehouse: CachedWarehouse;
 
+    dbtVersion: SupportedDbtVersions;
+
+    private readonly analytics: LightdashAnalytics | undefined;
+
+    dbtProjectDir?: string;
+
     constructor(
         dbtClient: DbtClient,
         warehouseClient: WarehouseClient,
         cachedWarehouse: CachedWarehouse,
+        dbtVersion: SupportedDbtVersions,
+        dbtProjectDir?: string,
+        analytics?: LightdashAnalytics,
     ) {
         this.dbtClient = dbtClient;
         this.warehouseClient = warehouseClient;
         this.cachedWarehouse = cachedWarehouse;
+        this.dbtVersion = dbtVersion;
+        this.dbtProjectDir = dbtProjectDir;
+        this.analytics = analytics;
     }
 
     // eslint-disable-next-line class-methods-use-this
@@ -91,15 +84,78 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
         return undefined;
     }
 
+    public async getLightdashProjectConfig(trackingParams?: {
+        projectUuid: string;
+        organizationUuid: string;
+        userUuid: string;
+    }): Promise<LightdashProjectConfig> {
+        if (!this.dbtProjectDir) {
+            return {
+                spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+            };
+        }
+
+        const configPath = path.join(
+            this.dbtProjectDir,
+            'lightdash.config.yml',
+        );
+
+        try {
+            const fileContents = await fs.readFile(configPath, 'utf8');
+            const config = await loadLightdashProjectConfig(
+                fileContents,
+                async (lightdashConfig) => {
+                    if (trackingParams) {
+                        void this.analytics?.track({
+                            event: 'lightdashconfig.loaded',
+                            userId: trackingParams.userUuid,
+                            properties: {
+                                projectId: trackingParams.projectUuid,
+                                userId: trackingParams.userUuid,
+                                organizationId: trackingParams.organizationUuid,
+                                categories_count: Number(
+                                    Object.keys(
+                                        lightdashConfig.spotlight.categories ??
+                                            {},
+                                    ).length,
+                                ),
+                                default_visibility:
+                                    lightdashConfig.spotlight
+                                        .default_visibility,
+                            },
+                        });
+                    }
+                },
+            );
+            return config;
+        } catch (e) {
+            Logger.debug(`No lightdash.config.yml found in ${configPath}`);
+
+            if (e instanceof Error && 'code' in e && e.code === 'ENOENT') {
+                // Return default config if file doesn't exist
+                return {
+                    spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+                };
+            }
+            throw e;
+        }
+    }
+
     public async compileAllExplores(
+        trackingParams?: {
+            userUuid: string;
+            organizationUuid: string;
+            projectUuid: string;
+        },
         loadSources: boolean = false,
     ): Promise<(Explore | ExploreError)[]> {
         Logger.debug('Install dependencies');
         // Install dependencies for dbt and fetch the manifest - may raise error meaning no explores compile
-        await this.dbtClient.installDeps();
+        if (this.dbtClient.installDeps !== undefined) {
+            await this.dbtClient.installDeps();
+        }
         Logger.debug('Get dbt manifest');
         const { manifest } = await this.dbtClient.getDbtManifest();
-
         // Type of the target warehouse
         if (!isSupportedDbtAdapter(manifest.metadata)) {
             throw new ParseError(
@@ -107,19 +163,64 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                 {},
             );
         }
+        let models: DbtRawModelNode[] = [];
+
+        if (this.dbtClient.getSelector()) {
+            Logger.info(
+                `Manifest generated with selector "${this.dbtClient.getSelector()}"`,
+            );
+            // If selector is provided, we use compile to get the models that match the selector
+            const manifestModels = getModelsFromManifest(manifest);
+            Logger.info(`Manifest models ${manifestModels.length}`);
+            const compiledModels = getCompiledModels(manifestModels, undefined);
+            Logger.info(`Compiled models ${compiledModels.length}`);
+            models = compiledModels.filter(
+                (node: AnyType) => node.resource_type === 'model' && node.meta, // check that node.meta exists
+            ) as DbtRawModelNode[];
+            Logger.info(`Filtered models ${models.length}`);
+        } else {
+            const nodes = Object.values(manifest.nodes);
+            Logger.info(`Manifest models ${nodes.length}`);
+            // If selector is not provided, we use all the models from the manifest
+            // models with invalid metadata will compile to failed Explores
+            models = nodes.filter(
+                (node: AnyType) => node.resource_type === 'model' && node.meta, // check that node.meta exists
+            ) as DbtRawModelNode[];
+            Logger.info(`Filtered models ${models.length}`);
+        }
+
         const adapterType = manifest.metadata.adapter_type;
 
-        // Validate models in the manifest - models with invalid metadata will compile to failed Explores
-        const models = Object.values(manifest.nodes).filter(
-            (node) => node.resource_type === 'model',
-        ) as DbtRawModelNode[];
-        Logger.debug(`Validate ${models.length} models in manifest`);
+        const manifestVersion = getDbtManifestVersion(manifest);
+        Logger.debug(
+            `Validate ${models.length} models in manifest with version ${manifestVersion}`,
+        );
+
+        if (models.length === 0) {
+            throw new NotFoundError(`No models found`);
+        }
+
         const [validModels, failedExplores] =
-            DbtBaseProjectAdapter._validateDbtModel(adapterType, models);
+            DbtBaseProjectAdapter._validateDbtModel(
+                adapterType,
+                models,
+                manifestVersion,
+            );
 
         // Validate metrics in the manifest - compile fails if any invalid
         const metrics = DbtBaseProjectAdapter._validateDbtMetrics(
-            Object.values(manifest.metrics),
+            manifestVersion,
+            [
+                DbtManifestVersion.V10,
+                DbtManifestVersion.V11,
+                DbtManifestVersion.V12,
+            ].includes(manifestVersion)
+                ? []
+                : Object.values(manifest.metrics),
+        );
+
+        const lightdashProjectConfig = await this.getLightdashProjectConfig(
+            trackingParams,
         );
 
         // Be lazy and try to attach types to the remaining models without refreshing the catalog
@@ -144,6 +245,7 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                 adapterType,
                 metrics,
                 this.warehouseClient,
+                lightdashProjectConfig,
             );
             return [...lazyExplores, ...failedExplores];
         } catch (e) {
@@ -181,6 +283,7 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                     adapterType,
                     metrics,
                     this.warehouseClient,
+                    lightdashProjectConfig,
                 );
                 return [...explores, ...failedExplores];
             }
@@ -188,21 +291,16 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
         }
     }
 
-    public async runQuery(sql: string) {
-        Logger.debug(`Run query against warehouse`);
-        // Possible error if query is ran before dependencies are installed
-        return this.warehouseClient.runQuery(sql);
-    }
-
-    static _validateDbtMetrics(metrics: DbtMetric[]): DbtMetric[] {
-        const validator = getMetricValidator();
+    static _validateDbtMetrics(
+        version: DbtManifestVersion,
+        metrics: DbtMetric[],
+    ): DbtMetric[] {
+        const validator = new ManifestValidator(version);
         metrics.forEach((metric) => {
-            const isValid = validator(metric);
-            if (isValid !== true) {
+            const [isValid, errorMessage] = validator.isDbtMetricValid(metric);
+            if (!isValid) {
                 throw new ParseError(
-                    `Could not parse dbt metric with id ${
-                        metric.unique_id
-                    }: ${formatAjvErrors(validator)}`,
+                    `Could not parse dbt metric with id ${metric.unique_id}: ${errorMessage}`,
                     {},
                 );
             }
@@ -213,17 +311,18 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
     static _validateDbtModel(
         adapterType: SupportedDbtAdapter,
         models: DbtRawModelNode[],
+        manifestVersion: DbtManifestVersion,
     ): [DbtModelNode[], ExploreError[]] {
-        const validator = getModelValidator();
+        const validator = new ManifestValidator(manifestVersion);
         return models.reduce(
             ([validModels, invalidModels], model) => {
                 let error: InlineError | undefined;
                 // Match against json schema
-                const isValid = validator(model);
+                const [isValid, errorMessage] = validator.isModelValid(model);
                 if (!isValid) {
                     error = {
                         type: InlineErrorType.METADATA_PARSE_ERROR,
-                        message: formatAjvErrors(validator),
+                        message: errorMessage,
                     };
                 } else if (
                     isValid &&
@@ -238,7 +337,17 @@ export class DbtBaseProjectAdapter implements ProjectAdapter {
                     const exploreError: ExploreError = {
                         name: model.name,
                         label: model.meta.label || friendlyName(model.name),
-                        errors: [error],
+                        groupLabel: model.meta.group_label,
+                        errors: [
+                            error.type === InlineErrorType.METADATA_PARSE_ERROR
+                                ? {
+                                      ...error,
+                                      message: `${
+                                          model.name ? `${model.name}: ` : ''
+                                      }${error.message}`,
+                                  }
+                                : error,
+                        ],
                     };
                     return [validModels, [...invalidModels, exploreError]];
                 }

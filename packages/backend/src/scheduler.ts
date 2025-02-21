@@ -1,8 +1,8 @@
-import * as Sentry from '@sentry/node';
 import { lightdashConfig } from './config/lightdashConfig';
-import Logger from './logger';
-import { SchedulerWorker } from './scheduler/SchedulerWorker';
-import { VERSION } from './version';
+import { getEnterpriseAppArguments } from './ee';
+import knexConfig from './knexfile';
+import Logger from './logging/logger';
+import SchedulerApp from './SchedulerApp';
 
 process
     .on('unhandledRejection', (reason, p) => {
@@ -13,22 +13,22 @@ process
         process.exit(1);
     });
 
-Sentry.init({
-    release: VERSION,
-    dsn: process.env.SENTRY_DSN,
-    environment:
-        process.env.NODE_ENV === 'development'
-            ? 'development'
-            : lightdashConfig.mode,
-    integrations: [],
-    ignoreErrors: ['WarehouseQueryError', 'FieldReferenceError'],
-});
-
-if (process.env.CI !== 'true') {
-    const worker = new SchedulerWorker({ lightdashConfig });
-    worker.run().catch((e) => {
-        Logger.error('Error starting standalone scheduler worker', e);
-    });
-} else {
-    Logger.info('Not running scheduler on CI');
-}
+(async () => {
+    if (process.env.CI !== 'true') {
+        const schedulerApp = new SchedulerApp({
+            lightdashConfig,
+            port: process.env.PORT || 8081,
+            environment:
+                process.env.NODE_ENV === 'development'
+                    ? 'development'
+                    : 'production',
+            knexConfig,
+            ...(await getEnterpriseAppArguments()),
+        });
+        schedulerApp.start().catch((e) => {
+            Logger.error('Error starting standalone scheduler worker', e);
+        });
+    } else {
+        Logger.info('Not running scheduler on CI');
+    }
+})();

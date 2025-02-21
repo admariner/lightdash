@@ -1,8 +1,8 @@
 import { EmailStatus, NotFoundError } from '@lightdash/common';
 import bcrypt from 'bcrypt';
 import { Knex } from 'knex';
+import { DbEmailOneTimePasscode } from '../database/entities/emailOneTimePasscodes';
 import { DbEmail, DbEmailIn, DbEmailRemove } from '../database/entities/emails';
-import { DbEmailOneTimePasscode } from '../database/entities/email_one_time_passcodes';
 
 type DbEmailStatus = Pick<DbEmail, 'email' | 'is_verified'> &
     Partial<DbEmailOneTimePasscode>;
@@ -181,18 +181,20 @@ export class EmailModel {
         userUuid: string,
         email: string,
     ): Promise<{ email: string }[]> {
-        const updatedRows = await this.database.raw<{ email: string }[]>(
+        const updatedRows = await this.database.raw<{
+            rows: { email: string }[];
+        }>(
             `
-        UPDATE emails
-        SET is_verified = true
-        FROM users
-        WHERE emails.user_id = users.user_id
-        AND users.user_uuid = ?
-        AND emails.email = ?
-        RETURNING emails.email`,
+                UPDATE emails
+                SET is_verified = true
+                FROM users
+                WHERE emails.user_id = users.user_id
+                  AND users.user_uuid = ?
+                  AND emails.email = ?
+                RETURNING emails.email`,
             [userUuid, email],
         );
-        return updatedRows;
+        return updatedRows.rows;
     }
 
     async deleteEmailOtp(userUuid: string, email: string): Promise<void> {

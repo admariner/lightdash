@@ -1,54 +1,104 @@
-import { Tooltip2 } from '@blueprintjs/popover2';
-import { DbtProjectType, ProjectType } from '@lightdash/common';
-import React, { ComponentProps, FC } from 'react';
-import { useParams } from 'react-router-dom';
+import { DbtProjectType, JobStatusType, ProjectType } from '@lightdash/common';
+import {
+    Anchor,
+    Badge,
+    Box,
+    Button,
+    Popover,
+    Text,
+    Tooltip,
+    type ButtonProps,
+} from '@mantine/core';
+import { IconRefresh } from '@tabler/icons-react';
+import { useEffect, useState, type FC } from 'react';
+import { useParams } from 'react-router';
 import { useProject } from '../../hooks/useProject';
 import { useRefreshServer } from '../../hooks/useRefreshServer';
-import { useActiveJob } from '../../providers/ActiveJobProvider';
-import { useApp } from '../../providers/AppProvider';
-import { useTracking } from '../../providers/TrackingProvider';
+import useActiveJob from '../../providers/ActiveJob/useActiveJob';
+import useApp from '../../providers/App/useApp';
+import useTracking from '../../providers/Tracking/useTracking';
 import { EventName } from '../../types/Events';
-import { BigButton } from '../common/BigButton';
-import {
-    DisabledRefreshDbt,
-    LoadingSpinner,
-    PreviewTag,
-    RefreshDbt,
-} from './RefreshDbtbutton.styles';
+import MantineIcon from '../common/MantineIcon';
 
-const RefreshDbtButton: FC<ComponentProps<typeof BigButton>> = (props) => {
+const RefreshDbtButton: FC<{
+    onClick?: () => void;
+    buttonStyles?: ButtonProps['sx'];
+    leftIcon?: React.ReactNode;
+    defaultTextOverride?: React.ReactNode;
+    refreshingTextOverride?: React.ReactNode;
+}> = ({
+    onClick,
+    buttonStyles,
+    leftIcon,
+    defaultTextOverride,
+    refreshingTextOverride,
+}) => {
     const { projectUuid } = useParams<{ projectUuid: string }>();
     const { data } = useProject(projectUuid);
     const { activeJob } = useActiveJob();
-    const { mutate } = useRefreshServer();
-    const isLoading = activeJob && activeJob?.jobStatus === 'RUNNING';
+    const { mutate: refreshDbtServer } = useRefreshServer();
+    const [isLoading, setIsLoading] = useState(false);
 
     const { track } = useTracking();
     const { user } = useApp();
 
+    useEffect(() => {
+        if (activeJob) {
+            if (
+                [JobStatusType.STARTED, JobStatusType.RUNNING].includes(
+                    activeJob.jobStatus,
+                )
+            ) {
+                setIsLoading(true);
+            }
+
+            if (
+                [JobStatusType.DONE, JobStatusType.ERROR].includes(
+                    activeJob.jobStatus,
+                )
+            ) {
+                setIsLoading(false);
+            }
+        }
+    }, [activeJob, activeJob?.jobStatus]);
+
     if (
         user.data?.ability?.cannot('manage', 'Job') ||
-        user.data?.ability?.cannot('manage', 'Project')
+        user.data?.ability?.cannot('manage', 'CompileProject')
     )
-        return <div></div>;
+        return null;
 
     if (data?.dbtConnection?.type === DbtProjectType.NONE) {
         if (data?.dbtConnection.hideRefreshButton) {
-            return <div />;
+            return null;
         }
         return (
-            <Tooltip2
-                hoverCloseDelay={500}
-                interactionKind="hover"
-                content={
-                    <p>
+            <Popover withinPortal withArrow width={300}>
+                <Popover.Target>
+                    <Box
+                        sx={{
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <Button
+                            size="xs"
+                            variant="outline"
+                            leftIcon={<MantineIcon icon={IconRefresh} />}
+                            disabled
+                        >
+                            Refresh dbt
+                        </Button>
+                    </Box>
+                </Popover.Target>
+                <Popover.Dropdown>
+                    <Text>
                         You're still connected to a dbt project created from the
                         CLI.
                         <br />
                         To keep your Lightdash project in sync with your dbt
                         project,
                         <br /> you need to either{' '}
-                        <a
+                        <Anchor
                             href={
                                 'https://docs.lightdash.com/get-started/setup-lightdash/connect-project#2-import-a-dbt-project'
                             }
@@ -56,9 +106,9 @@ const RefreshDbtButton: FC<ComponentProps<typeof BigButton>> = (props) => {
                             rel="noreferrer"
                         >
                             change your connection type
-                        </a>
+                        </Anchor>
                         , setup a{' '}
-                        <a
+                        <Anchor
                             href={
                                 'https://docs.lightdash.com/guides/cli/how-to-use-lightdash-deploy#automatically-deploy-your-changes-to-lightdash-using-a-github-action'
                             }
@@ -66,10 +116,10 @@ const RefreshDbtButton: FC<ComponentProps<typeof BigButton>> = (props) => {
                             rel="noreferrer"
                         >
                             GitHub action
-                        </a>
+                        </Anchor>
                         <br />
                         or, run{' '}
-                        <a
+                        <Anchor
                             href={
                                 'https://docs.lightdash.com/guides/cli/how-to-use-lightdash-deploy#lightdash-deploy-syncs-the-changes-in-your-dbt-project-to-lightdash'
                             }
@@ -77,23 +127,18 @@ const RefreshDbtButton: FC<ComponentProps<typeof BigButton>> = (props) => {
                             rel="noreferrer"
                         >
                             lightdash deploy
-                        </a>
+                        </Anchor>
                         ) from your command line.
-                    </p>
-                }
-            >
-                <DisabledRefreshDbt
-                    minimal
-                    disabled
-                    icon="refresh"
-                    text="Refresh dbt"
-                />
-            </Tooltip2>
+                    </Text>
+                </Popover.Dropdown>
+            </Popover>
         );
     }
 
-    const onClick = () => {
-        mutate();
+    const handleRefresh = () => {
+        setIsLoading(true);
+        refreshDbtServer();
+        onClick?.();
         track({
             name: EventName.REFRESH_DBT_CONNECTION_BUTTON_CLICKED,
         });
@@ -101,25 +146,38 @@ const RefreshDbtButton: FC<ComponentProps<typeof BigButton>> = (props) => {
 
     if (data?.type === ProjectType.PREVIEW) {
         return (
-            <Tooltip2
-                content={`Developer previews are temporary Lightdash projects`}
+            <Tooltip
+                withinPortal
+                label={`Developer previews are temporary Lightdash projects`}
             >
-                <PreviewTag intent="warning" large minimal>
+                <Badge color="yellow" size="lg" radius="sm">
                     Developer preview
-                </PreviewTag>
-            </Tooltip2>
+                </Badge>
+            </Tooltip>
         );
     }
 
     return (
-        <Tooltip2 content="If you've updated your YAML files, you can sync your changes to Lightdash by clicking this button.">
-            <RefreshDbt
-                {...props}
-                icon={!isLoading ? 'refresh' : <LoadingSpinner size={15} />}
-                text={!isLoading ? 'Refresh dbt' : 'Refreshing dbt'}
-                onClick={onClick}
-            />
-        </Tooltip2>
+        <Tooltip
+            withinPortal
+            multiline
+            w={320}
+            position="bottom"
+            label="If you've updated your YAML files, you can sync your changes to Lightdash by clicking this button."
+        >
+            <Button
+                size="xs"
+                variant="default"
+                leftIcon={leftIcon ?? <MantineIcon icon={IconRefresh} />}
+                loading={isLoading}
+                onClick={handleRefresh}
+                sx={buttonStyles}
+            >
+                {!isLoading
+                    ? defaultTextOverride ?? 'Refresh dbt'
+                    : refreshingTextOverride ?? 'Refreshing dbt'}
+            </Button>
+        </Tooltip>
     );
 };
 

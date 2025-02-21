@@ -1,32 +1,18 @@
 # Contributing to Lightdash
 
-First off, thanks for taking the time to contribute! ❤️
-
-All types of contributions are encouraged and valued. See the [Table of Contents](#table-of-contents) for different ways
-to help and details about how this project handles them. Please make sure to read the relevant section before making
-your contribution. It will make it a lot easier for us maintainers and smooth out the experience for all involved. The
-community looks forward to your contributions. 🎉
-
-> And if you like the project, but just don't have time to contribute, that's fine. There are other easy ways to support
-> the project and show your appreciation, which we would also be very happy about:
->
-> - Join [the community](https://github.com/lightdash/lightdash/discussions)
-> - Star the project
-> - Tweet about it
-> - Refer this project in your project's readme
-> - Mention the project at local meetups and tell your friends/colleagues
+Thanks for taking the time to contribute ❤️ all types of contributions are encouraged and valued!
 
 ## Table of Contents
 
-- [Code of Conduct](#code-of-conduct)
-- [I Have a Question](#i-have-a-question)
-- [I Want To Contribute](#i-want-to-contribute)
-    - [Reporting Bugs](#reporting-bugs)
-    - [Suggesting Enhancements](#suggesting-enhancements)
-- [Your First Pull Request](#your-first-pull-request)
-- [Sending a Pull Request](#sending-a-pull-request)
-- [Setup Development Environment](#setup-development-environment)
-- [Join The Project Team](#join-the-project-team)
+-   [Code of Conduct](#code-of-conduct)
+-   [How to ask for help](#how-to-ask-for-help)
+-   Contributing:
+    -   [Report a bug](#how-to-report-a-bug)
+    -   [Request a feature](#how-to-request-a-new-feature)
+    -   [Contribute code](#how-to-contribute-code-to-lightdash)
+-   [Opening a Pull Request](#opening-a-pull-request)
+-   [Setup Development Environment](#setup-development-environment)
+-   [Join The Lightdash Team](#join-the-lightdash-team)
 
 ## Code of Conduct
 
@@ -35,110 +21,57 @@ This project and everyone participating in it is governed by the
 By participating, you are expected to uphold this code. Please report unacceptable behavior
 to <support@lightdash.com>.
 
-## I Have a Question
+## How to ask for help
 
-> If you want to ask a question, we assume that you have read the available [Documentation](https://docs.lightdash.com).
+Useful resources for answering your questions:
 
-Before you ask a question, it is best to search for existing [Issues](https://github.com/lightdash/lightdash/issues)
-that might help you. In case you have found a suitable issue and still need clarification, you can write your question
-in this issue. It is also advisable to search the internet for answers first.
+-   [Documentation](https://docs.lightdash.com)
+-   [Issues](https://github.com/lightdash/lightdash/issues)
 
-If you then still feel the need to ask a question and need clarification, we recommend the following:
+If you cannot find an answer to your question then please join our [slack community](https://join.slack.com/t/lightdash-community/shared_invite/zt-2uwa5s9jl-xTNyjJ7otC8wH3jB8qgCpA) and head for the `#help` channel.
 
-- Open an [Issue](https://github.com/lightdash/lightdash/issues/new).
-- Provide as much context as you can about what you're running into.
-- Provide project and platform versions (nodejs, npm, etc), depending on what seems relevant.
+## How to report a bug
 
-We will then take care of the issue as soon as possible.
+> Vulnerabilities can be submitted through the GitHub repository security tab or by email at <security@lightdash.com>.
 
-## I Want To Contribute
+We use GitHub issues to track bugs and errors. If you run into an issue with the project:
+
+-   Open an [Issue](https://github.com/lightdash/lightdash/issues/new). (Since we can't be sure at this point whether it
+    is a bug or not, we ask you not to talk about a bug yet and not to label the issue.)
+-   Explain the behavior you would expect and the actual behavior.
+-   Please provide as much context as possible and describe the _reproduction steps_ that someone else can follow to
+    recreate the issue on their own. This usually includes your code. For good bug reports you should isolate the problem
+    and create a reduced test case.
+
+## How to request a new feature
+
+Enhancement suggestions are tracked as [GitHub issues](https://github.com/lightdash/lightdash/issues).
+
+-   Use a **clear and descriptive title** for the issue to identify the suggestion.
+-   Provide a **step-by-step description of the suggested enhancement** in as many details as possible.
+-   **Describe the current behavior** and **explain which behavior you expected to see instead** and why. At this point
+    you can also tell which alternatives do not work for you.
+-   You may want to **include screenshots and animated GIFs** which help you demonstrate the steps or point out the part
+    which the suggestion is related to.
+-   **Explain why this enhancement would be useful** to most Lightdash users. You may also want to point out the other
+    projects that solved it better and which could serve as inspiration.
+
+## How to contribute code to Lightdash
 
 > ### Legal Notice
 >
 > When contributing to this project, you must agree that you have authored 100% of the content, that you have the
 > necessary rights to the content and that the content you contribute may be provided under the project license.
 
-### Reporting Bugs
+Before contributing to Lightdash you must complete the following steps:
 
-#### Before Submitting a Bug Report
+-   Join our [slack community](https://join.slack.com/t/lightdash-community/shared_invite/zt-2uwa5s9jl-xTNyjJ7otC8wH3jB8qgCpA) and introduce yourself in the `#community-contributors` channel
+-   Choose an existing labelled `open-contribution`
+-   Ask a member of the team to assign you to the issue
 
-A good bug report shouldn't leave others needing to chase you up for more information. Therefore, we ask you to
-investigate carefully, collect information and describe the issue in detail in your report. Please complete the
-following steps in advance to help us fix any potential bug as fast as possible.
+Pull requests will not be reviewed unless the previous three steps are completed.
 
-- Make sure that you are using the latest version.
-- Determine if your bug is really a bug and not an error on your side e.g. using incompatible environment
-  components/versions (Make sure that you have read the [documentation](https://docs.lightdash.com). If you are looking
-  for support, you might want to check [this section](#i-have-a-question)).
-- To see if other users have experienced (and potentially already solved) the same issue you are having, check if there
-  is not already a bug report existing for your bug or error in
-  the [bug tracker](https://github.com/lightdash/lightdash/issues?q=label%3Abug).
-- Also make sure to search the internet (including Stack Overflow) to see if users outside of the GitHub community have
-  discussed the issue.
-- Collect information about the bug:
-    - Stack trace (Traceback)
-    - OS, Platform and Version (Windows, Linux, macOS, x86, ARM)
-    - Version of the interpreter, compiler, SDK, runtime environment, package manager, depending on what seems relevant.
-    - Possibly your input and the output
-    - Can you reliably reproduce the issue? And can you also reproduce it with older versions?
-
-#### How Do I Submit a Good Bug Report?
-
-> You must never report security related issues, vulnerabilities or bugs to the issue tracker, or elsewhere in public.
-> Instead sensitive bugs must be sent by email to <security@lightdash.com>.
-
-<!-- We may add a PGP key to allow the messages to be sent encrypted as well. -->
-
-We use GitHub issues to track bugs and errors. If you run into an issue with the project:
-
-- Open an [Issue](https://github.com/lightdash/lightdash/issues/new). (Since we can't be sure at this point whether it
-  is a bug or not, we ask you not to talk about a bug yet and not to label the issue.)
-- Explain the behavior you would expect and the actual behavior.
-- Please provide as much context as possible and describe the *reproduction steps* that someone else can follow to
-  recreate the issue on their own. This usually includes your code. For good bug reports you should isolate the problem
-  and create a reduced test case.
-- Provide the information you collected in the previous section.
-
-Once it's filed:
-
-- The project team will label the issue accordingly.
-- A team member will try to reproduce the issue with your provided steps. If there are no reproduction steps or no
-  obvious way to reproduce the issue, the team will ask you for those steps and mark the issue as `needs-repro`. Bugs
-  with the `needs-repro` tag will not be addressed until they are reproduced.
-- If the team is able to reproduce the issue, it will be marked `needs-fix`, as well as possibly other tags (such
-  as `critical`), and the issue will be left to be [implemented by someone](#your-first-pull-request).
-
-### Suggesting Enhancements
-
-This section guides you through submitting an enhancement suggestion for Lightdash, **including completely new features
-and minor improvements to existing functionality**. Following these guidelines will help maintainers and the community
-to understand your suggestion and find related suggestions.
-
-#### Before Submitting an Enhancement
-
-- Make sure that you are using the latest version.
-- Read the [documentation](https://docs.lightdash.com) carefully and find out if the functionality is already covered,
-  maybe by an individual configuration.
-- Perform a [search](https://github.com/lightdash/lightdash/issues) to see if the enhancement has already been
-  suggested. If it has, add a comment to the existing issue instead of opening a new one.
-- Find out whether your idea fits with the scope and aims of the project. It's up to you to make a strong case to
-  convince the project's developers of the merits of this feature. Keep in mind that we want features that will be
-  useful to the majority of our users and not just a small subset.
-
-#### How Do I Submit a Good Enhancement Suggestion?
-
-Enhancement suggestions are tracked as [GitHub issues](https://github.com/lightdash/lightdash/issues).
-
-- Use a **clear and descriptive title** for the issue to identify the suggestion.
-- Provide a **step-by-step description of the suggested enhancement** in as many details as possible.
-- **Describe the current behavior** and **explain which behavior you expected to see instead** and why. At this point
-  you can also tell which alternatives do not work for you.
-- You may want to **include screenshots and animated GIFs** which help you demonstrate the steps or point out the part
-  which the suggestion is related to.
-- **Explain why this enhancement would be useful** to most Lightdash users. You may also want to point out the other
-  projects that solved it better and which could serve as inspiration.
-
-## Your First Pull Request
+---
 
 Working on your first Pull Request? You can learn how from this free video series:
 
@@ -160,7 +93,7 @@ If somebody claims an issue but doesn't follow up for more than a week, it's fin
 leave a comment.
 If there has been no activity on the issue for 7 to 14 days, it is safe to assume that nobody is working on it.
 
-## Sending a Pull Request
+## Opening a Pull Request
 
 Lightdash is a community project, so Pull Requests are always welcome, but, before working on a large change, it is best
 to open an issue first to discuss it with the maintainers.
@@ -186,10 +119,10 @@ git checkout main
 git pull upstream main
 ```
 
-4. Install the dependencies with yarn (npm isn't supported):
+4. Install the dependencies with pnpm (npm/yarn isn't supported):
 
 ```sh
-yarn install
+pnpm install
 ```
 
 5. Create a new topic branch:
@@ -223,7 +156,12 @@ E.g:
 feat: add table calculations
 fix: remove infinite loop during login
 docs: add page about metrics
+style: add more space
 ```
+
+Note that **feat** and **fix** are typically used for changes that will provide value to the end-user
+so they trigger a release (version update). If you are making a change to docs, styles, or some
+other part of the system, please use the appropriate tag to avoid the extra overhead.
 
 You can see all
 the [supported types here](https://github.com/commitizen/conventional-commit-types/blob/v3.0.0/index.json).
@@ -239,31 +177,40 @@ The reviewers can still request adhoc changes for situations that haven't been e
 
 ## Setup Development Environment
 
+Packages overview:
+
+-   [`frontend` - React frontend](../packages/frontend/README.md)
+-   [`backend` - Node.js backend](../packages/backend/README.md)
+-   `common` - Shared code between all the other packages
+-   `cli` - Command line interface
+-   `e2e` - End-to-end and integration tests
+-   `warehouses` - Classes for connecting to different databases
+
 #### using Github Codespaces / VS Code Remote Containers
 
 The fastest way to setup a development environment is to use Github Codespaces or VS Code Remote Containers.
 This provides:
 
-* All dependencies
-* A postgres database for development
-* A sample dbt project
-* A pre-configured code editor
+-   All dependencies
+-   A postgres database for development
+-   A sample dbt project
+-   A pre-configured code editor
 
 To get started:
 
-* in Github [create a codespace](https://docs.github.com/en/codespaces/developing-in-codespaces/creating-a-codespace)
-* in VS
-  Code [install the remote containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+-   in Github [create a codespace](https://docs.github.com/en/codespaces/developing-in-codespaces/creating-a-codespace)
+-   in VS
+    Code [install the remote containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 
 Once connected run the following commands in the VS Code terminal:
 
 ```shell
 # Setup the database
-yarn workspace backend migrate
-yarn workspace backend seed
+pnpm -F backend migrate
+pnpm -F backend seed
 
 # Run Lightdash frontend and backend in dev mode
-yarn dev
+pnpm dev
 ```
 
 #### using Docker compose
@@ -273,14 +220,15 @@ Alternatively you can create a developer environment using docker compose:
 ```shell
 # Clone the Lightdash repo
 git clone https://github.com/lightdash/lightdash
+```
 
-# Update submodules
-git submodule update --init --recursive
+Copy `.env.development` into a new file called `.env.development.local` and run the following `docker compose up` command:
 
+```shell
 # Create docker containers
-Note: before the next step make sure your docker has 4GB of memory ( Docker -> settings -> resources ) you should be able to manipulate the values here.
+# Note: before the next step make sure your docker has 4GB of memory ( Docker -> settings -> resources ) you should be able to manipulate the values here.
 
-docker compose -p lightdash-app -f docker/docker-compose.dev.yml --env-file .env up --detach --remove-orphans
+docker compose -p lightdash-app -f docker/docker-compose.dev.yml --env-file .env.development.local up --detach --remove-orphans
 ```
 
 When ready, access the development container and run these commands:
@@ -289,8 +237,8 @@ When ready, access the development container and run these commands:
 # Connect to container
 docker exec -it lightdash-app-lightdash-dev-1 bash
 
-# Skip puppeteer download
-PUPPETEER_SKIP_DOWNLOAD=true
+# Skip playwright download
+export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
 
 # Install dependencies & build common package
 ./scripts/build.sh
@@ -303,111 +251,134 @@ PUPPETEER_SKIP_DOWNLOAD=true
 ./scripts/seed-lightdash.sh
 
 # Run Lightdash frontend and backend in dev mode
-yarn dev # http://localhost:3000
+pnpm dev # http://localhost:3000
+
+# Log in dev mode
+# When navigating to http://localhost:3000 you will be prompt to the login page, you can use our demo login details:
+
+# Username: demo@lightdash.com
+# Password: demo_password!
+
+# Or run in production mode
+# pnpm build
+# pnpm start # http://localhost:8080
+```
+
+Notes:
+
+-   If you change files inside `/packages/common` you should run `pnpm common-build` before `pnpm dev`
+-   If you change files inside `/packages/warehouses` you should run `pnpm warehouses-build` before `pnpm dev`
+-   If you rename files the container might not recognise the changes. To fix this, stop the containers and start again.
+-   If you need to change any of the environment variables, you can do so by editing `.env.development.local` and re-run the `docker compose up` command mentioned above
+
+When you want to stop:
+
+```shell
+docker compose -p lightdash-app -f docker/docker-compose.dev.yml --env-file .env.development.local stop
+```
+
+When you want to start:
+
+```shell
+docker compose -p lightdash-app -f docker/docker-compose.dev.yml --env-file .env.development.local start
+```
+
+#### Setup Development Environment without Docker
+
+To setup Development Environment without Docker you need following pre-requisites before running Lightdash:
+
+-   node >= v18.x (20 is preferred)
+-   python >= 3.3
+-   pnpm
+-   postgres >= 12
+-   dbt 1.4.x or 1.5.x
+
+eg. on MacOS you can follow this instructions:
+
+```shell
+# 1 Install Homebrew (https://brew.sh)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 2 Install nvm (https://github.com/nvm-sh/nvm#troubleshooting-on-macos) and other required dependencies
+brew update
+brew install nvm
+brew install pkg-config cairo pango libpng jpeg giflib librsvg pixman python-setuptools
+
+# 3 Install specified node version using NVM (https://github.com/nvm-sh/nvm)
+
+nvm install v20.8.0
+nvm alias default v20.8.0
+
+# 4 Install postgres (https://wiki.postgresql.org/wiki/Homebrew) and pgvector
+brew install postgresql@14
+brew services start postgresql@14
+
+# pgvector is an extension for postgres we use in Lightdash, it needs to be installed separately
+# More info about this extension and a detailed installation guide available here: https://github.com/pgvector/pgvector
+# on Linux, you can install `postgresql-14-pgvector`, available on apt
+# You might need to point pgvector to a correct postgres instance if you have multiple versions installed
+# export PG_CONFIG=/opt/homebrew/opt/postgresql@14/bin/pg_config
+git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git && cd pgvector && make && sudo make install && cd ..
+
+# 5 Install dbt using pip
+# Detailed installation guide available here: https://docs.getdbt.com/docs/core/pip-install
+# Create python virtual env
+python3 -m venv env-lightdash # or your preferred env name
+# Activate the env
+# You can deactivate python virtual env by running `deactivate` later
+source env-lightdash/bin/activate
+
+python -m pip install dbt-postgres==1.4.9
+
+# 6 Clone the repo and open it in your IDE
+git clone https://github.com/lightdash/lightdash.git
+cd lightdash
+
+# 7 Copy `.env.development` to `.env.development.local`
+cp .env.development .env.development.local
+
+# 8 Edit some environment variables to match your setup
+open .env.development.local -t
+
+# 8.1 You may need to edit the following variables:
+PGHOST=localhost
+PGPORT=5432
+PGUSER=pg_user *OR* machine username if no prior postgres set up
+PGPASSWORD=pg_password *OR* blank if no prior postgres set up
+PGDATABASE=postgres
+DBT_DEMO_DIR=$PWD/examples/full-jaffle-shop-demo
+
+# 9 Install packages
+pnpm install
+
+# 10 Build / migrate / seed
+pnpm load:env ./scripts/build.sh
+pnpm load:env ./scripts/seed-jaffle.sh
+pnpm load:env ./scripts/migrate.sh
+pnpm load:env ./scripts/seed-lightdash.sh
+
+# Run
+pnpm load:env pnpm dev
 
 # Log in dev mode
 When navigating to http://localhost:3000 you will be prompt to the login page, you can use our demo login details:
 
 Username: demo@lightdash.com
 Password: demo_password!
-
-# Or run in production mode
-# yarn build
-# yarn start # http://localhost:8080
 ```
 
-Notes:
-
-- If you change files inside `/packages/common` you should run `yarn common-build` before `yarn dev`
-- If you change files inside `/packages/warehouses` you should run `yarn warehouses-build` before `yarn dev`
-- If you rename files the container might not recognise the changes. To fix this, stop the containers and start again.
-
-When you want to stop:
-
-```shell
-docker compose -p lightdash-app -f docker/docker-compose.dev.yml --env-file .env stop
-```
-
-When you want to start:
-
-```shell
-docker compose -p lightdash-app -f docker/docker-compose.dev.yml --env-file .env start
-```
-
-#### Setup Development Environment without Docker
-
-To setup Development Environment without Docker you need following pre-requisits before running Lightdash:
-
-- node 14.x <= version <= 16.x
-- yarn
-- postgres
-- dbt
-
-eg. on MacOS you can follow this instructions:
-
-```shell
-#1 install brew (https://brew.sh)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-#2 install nvm (https://github.com/nvm-sh/nvm#troubleshooting-on-macos)
-brew update 
-brew install nvm
-
-#3 install node 16x using NVM (https://github.com/nvm-sh/nvm)
-nvm install v16.17.0
-nvm alias default v16.17.0
-
-#4 install postgres (https://wiki.postgresql.org/wiki/Homebrew)
-brew install postgresql@14
-brew services start postgresql@14
-
-#5 install dbt (https://docs.getdbt.com/dbt-cli/install/homebrew)
-brew install dbt-labs/dbt/dbt-postgres
-
-#6 install packages
-yarn
-
-#7 clone the repo and open it in your IDE
-git clone https://github.com/lightdash/lightdash.git
-
-#8 create `.env.local` and override any variables you need to change from `.env`
-touch .env.local
-open .env.local -t
-
-# here is a sample content of the `.env.local` file
-PGHOST=localhost
-PGPORT=5432
-PGUSER=pg_user *OR* machine username if no prior postgres set up
-PGPASSWORD=pg_password *OR* blank if no prior postgres set up
-PGDATABASE=postgres
-DBT_DEMO_DIR=/*path*/*to*/lightdash/project/examples/full-jaffle-shop-demo
-LIGHTDASH_CONFIG_FILE=/*path*/*to*/lightdash/lightdash.yml
-
-#9 Update submodules
-git submodule update --init --recursive
-
-#10 build / migrate / seed
-yarn load:env ./scripts/build.sh
-yarn load:env ./scripts/seed-jaffle.sh
-yarn load:env ./scripts/migrate.sh
-yarn load:env ./scripts/seed-lightdash.sh
-
-# run
-yarn load:env yarn dev
-```
-
-> ⚠️ you can add env variables to your system and ignore running `yarn load:env` before each command
+> ⚠️ you can add env variables to your system and ignore running `pnpm load:env` before each command
 
 #### How to run unit tests
 
 ```shell
 # Prepare dependencies
-yarn install
-yarn common-build
-yarn warehouses-build
+pnpm install
+pnpm common-build
+pnpm warehouses-build
 
 # Run unit tests
-yarn test
+pnpm test
 ```
 
 #### How to run e2e tests
@@ -416,43 +387,92 @@ Before running e2e tests make sure you're running the app locally.
 
 ```shell
 # Prepare dependencies
-yarn install
-yarn common-build
-yarn warehouses-build
+pnpm install
+pnpm common-build
+pnpm warehouses-build
 
-# run cypress in interactive mode
-yarn e2e-open
+# Run cypress in interactive mode
+pnpm e2e-open
 
-# or run cypress in cli mode
-yarn e2e-run
+# Or run cypress in cli mode
+pnpm e2e-run
 ```
 
 Note:
 
-- Edit `packages/e2e/cypress.json` if you're running Lightdash on a different domain/port than `http://localhost:8080`
+-   Edit `packages/e2e/cypress.json` if you're running Lightdash on a different domain/port than `http://localhost:8080`
 
 #### How to check code quality
 
 ```shell
-yarn lint
-yarn format
+pnpm lint
+pnpm format
 ```
 
 #### Developing API endpoints
 
-API endpoints are written in controllers, which are located in `packages/backend/src/controllers`. Controllers are 
-then registered in `packages/backend/src/index.ts` but in order to be made available you'll need to regenerate the 
+API endpoints are written in controllers, which are located in `packages/backend/src/controllers`. Controllers are
+then registered in `packages/backend/src/index.ts` but in order to be made available you'll need to regenerate the
 `routes.ts` file by executing:
 
 ```shell
-yarn workspace backend run tsoa routes
+pnpm -F backend run tsoa routes
+```
+
+### Running headless browser locally
+
+Headless browser is used to generate images we use for Slack unfurls or on scheduled deliveries,
+you can find more about headless browser on [our docs](https://docs.lightdash.com/self-host/customize-deployment/enable-headless-browser-for-lightdash).
+
+If you want to debug some of these features, you should run headless browser locally on docker.
+
+#### Running Lightdash on docker and headless browser
+
+If you are running both Lightdash and Headless browser using our docker-compose yml set-up you should be ok, and everything should work as expected.
+
+#### Running Lightdash without docker and headless browser on Linux
+
+If you are running lightdash without docker, you will have to run headless browser in a way that it is able to connect
+to your lightdash endpoint in localhost. You can achive this on Linux by doing:
+
+```shell
+docker run -e PORT=3001 --name=lightdash-headless --network 'host' -it --rm ghcr.io/browserless/chromium:v2.24.3
+```
+
+Then make sure to configure the following ENV variables:
+
+```shell
+export HEADLESS_BROWSER_HOST='localhost'
+export HEADLESS_BROWSER_PORT=3001
+export SITE_URL=http://localhost:3000
+```
+
+#### Running Lightdash without docker and headless browser on Mac
+
+If you are running Lightdash without docker on Mac, you will have to run docker and create an special host to reach
+lightdash because it can't use localhost.
+
+```shell
+docker run -e PORT=3001 -p 3001:3001 --name=lightdash-headless --add-host=lightdash-dev:host-gateway -it --rm ghcr.io/browserless/chromium:v2.24.3
+```
+
+Make sure to add the following line to your `/etc/hosts` file:
+
+```
+127.0.0.1 lightdash-dev
+```
+
+Then headless browser should be able to reach lightdash on `http://lightdash-dev:3000`
+
+So make sure to configure the following ENV variables:
+
+```shell
+export HEADLESS_BROWSER_HOST='localhost'
+export HEADLESS_BROWSER_PORT=3001
+export SITE_URL=http://lightdash-dev:3000
 ```
 
 ## Join The Lightdash Team
 
 If you are interested in joining our team, check
 our [job board](https://www.notion.so/gethubble/Job-Board-a2c7d872794b45deb7b76ad68701d750)!
-
-## Attribution
-
-This guide is based on the **contributing-gen**. [Make your own](https://github.com/bttger/contributing-gen)!

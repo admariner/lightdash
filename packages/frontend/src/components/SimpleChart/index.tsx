@@ -1,10 +1,21 @@
-import { NonIdealState, Spinner } from '@blueprintjs/core';
-import { PivotReference } from '@lightdash/common';
+import { type PivotReference } from '@lightdash/common';
+import { IconChartBarOff } from '@tabler/icons-react';
 import EChartsReact from 'echarts-for-react';
-import { EChartsReactProps, Opts } from 'echarts-for-react/lib/types';
-import { FC, memo, useCallback, useEffect, useMemo } from 'react';
-import useEcharts from '../../hooks/echarts/useEcharts';
-import { useVisualizationContext } from '../LightdashVisualization/VisualizationProvider';
+import { type EChartsReactProps, type Opts } from 'echarts-for-react/lib/types';
+import {
+    memo,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+    type FC,
+} from 'react';
+import useEchartsCartesianConfig, {
+    getFormattedValue,
+    isLineSeriesOption,
+} from '../../hooks/echarts/useEchartsCartesianConfig';
+import { useVisualizationContext } from '../LightdashVisualization/useVisualizationContext';
+import SuboptimalState from '../common/SuboptimalState/SuboptimalState';
 
 type EchartBaseClickEvent = {
     // The component name clicked,
@@ -44,19 +55,29 @@ export type EchartSeriesClickEvent = EchartBaseClickEvent & {
 
 type EchartClickEvent = EchartSeriesClickEvent | EchartBaseClickEvent;
 
+type LegendClickEvent = {
+    selected: {
+        [name: string]: boolean;
+    };
+};
+
 export const EmptyChart = () => (
     <div style={{ height: '100%', width: '100%', padding: '50px 0' }}>
-        <NonIdealState
+        <SuboptimalState
             title="No data available"
             description="Query metrics and dimensions with results."
-            icon="chart"
+            icon={IconChartBarOff}
         />
     </div>
 );
 
 export const LoadingChart = () => (
     <div style={{ height: '100%', width: '100%', padding: '50px 0' }}>
-        <NonIdealState title="Loading chart" icon={<Spinner />} />
+        <SuboptimalState
+            title="Loading chart"
+            loading
+            className="loading_chart"
+        />
     </div>
 );
 
@@ -64,16 +85,32 @@ const isSeriesClickEvent = (e: EchartClickEvent): e is EchartSeriesClickEvent =>
     e.componentType === 'series';
 
 type SimpleChartProps = Omit<EChartsReactProps, 'option'> & {
+    isInDashboard: boolean;
     $shouldExpand?: boolean;
     className?: string;
     'data-testid'?: string;
 };
 
 const SimpleChart: FC<SimpleChartProps> = memo((props) => {
-    const { chartRef, isLoading, onSeriesContextMenu } =
+    const { chartRef, isLoading, onSeriesContextMenu, itemsMap } =
         useVisualizationContext();
 
-    const eChartsOptions = useEcharts();
+    const [selectedLegends, setSelectedLegends] = useState({});
+    const [selectedLegendsUpdated, setSelectedLegendsUpdated] = useState({});
+
+    const onLegendChange = useCallback((params: LegendClickEvent) => {
+        setSelectedLegends(params.selected);
+    }, []);
+
+    useEffect(() => {
+        setSelectedLegendsUpdated(selectedLegends);
+    }, [selectedLegends]);
+
+    const eChartsOptions = useEchartsCartesianConfig(
+        selectedLegendsUpdated,
+        props.isInDashboard,
+    );
+
     useEffect(() => {
         const listener = () => {
             const eCharts = chartRef.current?.getEchartsInstance();
@@ -105,14 +142,111 @@ const SimpleChart: FC<SimpleChartProps> = memo((props) => {
         [onSeriesContextMenu, eChartsOptions],
     );
 
-    const onEvents = useMemo(
-        () => ({
-            contextmenu: onChartContextMenu,
-            click: onChartContextMenu,
-        }),
-        [onChartContextMenu],
-    );
     const opts = useMemo<Opts>(() => ({ renderer: 'svg' }), []);
+
+    const handleOnMouseOver = useCallback(
+        (params: any) => {
+            const eCharts = chartRef.current?.getEchartsInstance();
+
+            if (eCharts) {
+                // TODO: move to own util function
+                let setTooltipItemTrigger = true;
+                // Tooltip trigger 'item' does not work when symbol is not shown; reference: https://github.com/apache/echarts/issues/14563
+                const series = eCharts.getOption().series;
+
+                const isGrouped = (series as any[]).some(
+                    (serie) => serie.pivotReference !== undefined,
+                );
+                if (Array.isArray(series) && !isGrouped) return null;
+
+                if (
+                    Array.isArray(series) &&
+                    isLineSeriesOption(series[params.seriesIndex])
+                ) {
+                    setTooltipItemTrigger =
+                        !!series[params.seriesIndex].showSymbol;
+                }
+
+                if (
+                    setTooltipItemTrigger &&
+                    eChartsOptions?.tooltip.formatter
+                ) {
+                    eCharts.setOption(
+                        {
+                            tooltip: {
+                                trigger: 'item',
+                                formatter: (param: any) => {
+                                    // item param are slightly different to axis params, and they don't contain the axisValueLabel
+                                    // so we need to generate it here (and wrap it in an array) and then reuse the formatter used
+                                    // on `useEchartsCartesianConfig` to generate the tooltip
+                                    if (eChartsOptions.tooltip.formatter) {
+                                        const dim =
+                                            param.encode?.x?.[0] !== undefined
+                                                ? param.dimensionNames[
+                                                      param.encode?.x[0]
+                                                  ]
+                                                : '';
+
+                                        const axisValue = param.value[dim];
+                                        const formattedValue = itemsMap
+                                            ? getFormattedValue(
+                                                  axisValue,
+                                                  dim,
+                                                  itemsMap,
+                                                  true,
+                                              )
+                                            : axisValue;
+
+                                        return (
+                                            eChartsOptions.tooltip
+                                                .formatter as any
+                                        )([
+                                            {
+                                                ...param,
+                                                axisValueLabel: formattedValue,
+                                            },
+                                        ]);
+                                    }
+                                },
+                            },
+                            // Re-enable emphasis on mouse over
+                            emphasis: {
+                                disabled: false,
+                            },
+                        },
+                        false,
+                        true, // lazy update
+                    );
+                }
+                // Wait for tooltip to change from `axis` to `item` and keep hovered on item highlighted
+                setTimeout(() => {
+                    eCharts.dispatchAction({
+                        type: 'highlight',
+                        seriesIndex: params.seriesIndex,
+                    });
+                }, 100);
+            }
+        },
+        [chartRef, eChartsOptions?.tooltip.formatter, itemsMap],
+    );
+
+    const handleOnMouseOut = useCallback(() => {
+        const eCharts = chartRef.current?.getEchartsInstance();
+
+        if (eCharts) {
+            eCharts.setOption(
+                {
+                    tooltip: eChartsOptions?.tooltip,
+                    // Disable emphasis on mouse out - this is helpful when moving outside the chart too quickly when immediately before  the mouse was over a highlighted series. This resets the emphasis state.
+                    emphasis: {
+                        disabled: true,
+                    },
+                },
+                false,
+                true, // lazy update
+            );
+        }
+    }, [chartRef, eChartsOptions?.tooltip]);
 
     if (isLoading) return <LoadingChart />;
     if (!eChartsOptions) return <EmptyChart />;
@@ -138,7 +272,13 @@ const SimpleChart: FC<SimpleChartProps> = memo((props) => {
             option={eChartsOptions}
             notMerge
             opts={opts}
-            onEvents={onEvents}
+            onEvents={{
+                contextmenu: onChartContextMenu,
+                click: onChartContextMenu,
+                mouseover: handleOnMouseOver,
+                mouseout: handleOnMouseOut,
+                legendselectchanged: onLegendChange,
+            }}
             {...props}
         />
     );

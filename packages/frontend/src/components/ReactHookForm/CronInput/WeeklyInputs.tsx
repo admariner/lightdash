@@ -1,13 +1,8 @@
-import { Classes, FormGroup } from '@blueprintjs/core';
-import { TimePicker } from '@blueprintjs/datetime';
-import React, { FC } from 'react';
-import { InlinedInputs, InlinedLabel } from './CronInput.styles';
-import {
-    getTimePickerValue,
-    getWeeklyCronExpression,
-    parseCronExpression,
-} from './cronInputUtils';
+import { Group, Input } from '@mantine/core';
+import React, { type FC } from 'react';
+import TimePicker from './TimePicker';
 import WeekDaySelect from './WeekDaySelect';
+import { getWeeklyCronExpression, parseCronExpression } from './cronInputUtils';
 
 const WeeklyInputs: FC<{
     disabled?: boolean;
@@ -20,30 +15,22 @@ const WeeklyInputs: FC<{
         onChange(getWeeklyCronExpression(minutes, hours, newWeekday));
     };
 
-    const onTimeChange = (date: Date) => {
+    const onTimeChange = (newTime: { hours: number; minutes: number }) => {
         onChange(
-            getWeeklyCronExpression(
-                date.getMinutes(),
-                date.getHours(),
-                weekDay,
-            ),
+            getWeeklyCronExpression(newTime.minutes, newTime.hours, weekDay),
         );
     };
     return (
-        <InlinedInputs>
-            <FormGroup inline label={'on'} disabled={disabled}>
-                <WeekDaySelect value={weekDay} onChange={onDayChange} />
-            </FormGroup>
-            <FormGroup inline label={'at'} disabled={disabled}>
-                <TimePicker
-                    useAmPm
-                    disabled={disabled}
-                    value={getTimePickerValue(hours, minutes)}
-                    onChange={onTimeChange}
-                />
-            </FormGroup>
-            <InlinedLabel className={Classes.LABEL}>UTC</InlinedLabel>
-        </InlinedInputs>
+        <Group noWrap spacing="sm">
+            <Input.Label>on</Input.Label>
+            <WeekDaySelect value={weekDay} onChange={onDayChange} />
+            <Input.Label>at</Input.Label>
+            <TimePicker
+                disabled={disabled}
+                cronExpression={cronExpression}
+                onChange={onTimeChange}
+            />
+        </Group>
     );
 };
 export default WeeklyInputs;

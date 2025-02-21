@@ -1,100 +1,108 @@
-import { Intent, NonIdealState, PopoverPosition } from '@blueprintjs/core';
-import { Dashboard } from '@lightdash/common';
-import { FC } from 'react';
-import { useParams } from 'react-router-dom';
-import { useSavedCharts } from '../../../hooks/useSpaces';
-import { useApp } from '../../../providers/AppProvider';
-import { TrackSection } from '../../../providers/TrackingProvider';
-import { SectionName } from '../../../types/Events';
-import AddTileButton from '../AddTileButton';
+import { subject } from '@casl/ability';
+import { type Dashboard } from '@lightdash/common';
 import {
-    ButtonWrapper,
-    CTA,
-    EmptyStateIcon,
-    EmptyStateWrapper,
-    Title,
-} from './EmptyStateNoTiles.styles';
+    IconChartBarOff,
+    IconLayoutDashboard,
+    IconPlayerPlay,
+} from '@tabler/icons-react';
+import { type FC } from 'react';
+import { useParams } from 'react-router';
+import { useProjectSavedChartStatus } from '../../../hooks/useOnboardingStatus';
+import useCreateInAnySpaceAccess from '../../../hooks/user/useCreateInAnySpaceAccess';
+import { Can } from '../../../providers/Ability';
+import useApp from '../../../providers/App/useApp';
+import { TrackSection } from '../../../providers/Tracking/TrackingProvider';
+import { SectionName } from '../../../types/Events';
+import MantineIcon from '../../common/MantineIcon';
+import MantineLinkButton from '../../common/MantineLinkButton';
+import SuboptimalState from '../../common/SuboptimalState/SuboptimalState';
+import AddTileButton from '../AddTileButton';
 
 interface SavedChartsAvailableProps {
     onAddTiles: (tiles: Dashboard['tiles'][number][]) => void;
+    emptyContainerType?: 'dashboard' | 'tab';
     isEditMode: boolean;
+    setAddingTab: (value: React.SetStateAction<boolean>) => void;
+    activeTabUuid?: string;
+    dashboardTabs?: Dashboard['tabs'];
 }
-
-const SavedChartsAvailable: FC<SavedChartsAvailableProps> = ({
-    onAddTiles,
-    isEditMode,
-}) => {
-    const { user } = useApp();
-    const userCanManageDashboard = user.data?.ability.can(
-        'manage',
-        'Dashboard',
-    );
-
-    return (
-        <EmptyStateWrapper>
-            <EmptyStateIcon icon="grouped-bar-chart" size={59} />
-            <Title>
-                {userCanManageDashboard
-                    ? 'Start building your dashboard!'
-                    : 'Dashboard is empty.'}
-            </Title>
-            {userCanManageDashboard && isEditMode ? (
-                <AddTileButton
-                    onAddTiles={onAddTiles}
-                    intent={Intent.PRIMARY}
-                    popoverPosition={PopoverPosition.BOTTOM}
-                />
-            ) : null}
-        </EmptyStateWrapper>
-    );
-};
-
-const RunQueryButton: FC<{ projectId: string }> = ({ projectId }) => (
-    <ButtonWrapper>
-        <CTA
-            text="Run a query"
-            intent={Intent.PRIMARY}
-            href={`/projects/${projectId}/tables`}
-        />
-    </ButtonWrapper>
-);
-
-const NoSavedChartsAvailable = () => (
-    <EmptyStateWrapper>
-        <EmptyStateIcon icon="grouped-bar-chart" size={59} />
-        <Title>You haven’t saved any charts yet.</Title>
-    </EmptyStateWrapper>
-);
 
 const EmptyStateNoTiles: FC<SavedChartsAvailableProps> = ({
     onAddTiles,
+    emptyContainerType = 'dashboard',
     isEditMode,
+    setAddingTab,
+    activeTabUuid,
+    dashboardTabs,
 }) => {
     const { projectUuid } = useParams<{ projectUuid: string }>();
-    const savedChartsRequest = useSavedCharts(projectUuid);
-    const savedCharts = savedChartsRequest.data || [];
-    const hasSavedCharts = savedCharts.length > 0;
+    const { user } = useApp();
+    const { data: hasSavedCharts } = useProjectSavedChartStatus(projectUuid);
+
+    const userCanCreateDashboard = useCreateInAnySpaceAccess(
+        projectUuid,
+        'Dashboard',
+    );
+
+    const dashboardEmptyStateTitle = () => {
+        switch (emptyContainerType) {
+            case 'dashboard':
+                return userCanCreateDashboard
+                    ? 'Start building your dashboard!'
+                    : 'Dashboard is empty.';
+            case 'tab':
+                return userCanCreateDashboard
+                    ? 'Add tiles to this tab'
+                    : 'Tab is empty';
+            default:
+                return 'Dashboard is empty.';
+        }
+    };
 
     return (
         <TrackSection name={SectionName.EMPTY_RESULTS_TABLE}>
             <div style={{ padding: '50px 0' }}>
-                <NonIdealState
-                    description={
-                        hasSavedCharts ? (
-                            <SavedChartsAvailable
-                                onAddTiles={onAddTiles}
-                                isEditMode={isEditMode}
-                            />
-                        ) : (
-                            <NoSavedChartsAvailable />
-                        )
-                    }
-                    action={
-                        !hasSavedCharts ? (
-                            <RunQueryButton projectId={projectUuid} />
-                        ) : undefined
-                    }
-                />
+                {hasSavedCharts ? (
+                    <SuboptimalState
+                        icon={IconLayoutDashboard}
+                        title={dashboardEmptyStateTitle()}
+                        action={
+                            userCanCreateDashboard && isEditMode ? (
+                                <AddTileButton
+                                    onAddTiles={onAddTiles}
+                                    setAddingTab={setAddingTab}
+                                    activeTabUuid={activeTabUuid}
+                                    dashboardTabs={dashboardTabs}
+                                />
+                            ) : undefined
+                        }
+                    />
+                ) : (
+                    <SuboptimalState
+                        icon={IconChartBarOff}
+                        title="You haven’t saved any charts yet."
+                        action={
+                            <Can
+                                I="manage"
+                                this={subject('Explore', {
+                                    organizationUuid:
+                                        user.data?.organizationUuid,
+                                    projectUuid: projectUuid,
+                                })}
+                            >
+                                <MantineLinkButton
+                                    size="xs"
+                                    leftIcon={
+                                        <MantineIcon icon={IconPlayerPlay} />
+                                    }
+                                    href={`/projects/${projectUuid}/tables`}
+                                >
+                                    Run a query
+                                </MantineLinkButton>
+                            </Can>
+                        }
+                    />
+                )}
             </div>
         </TrackSection>
     );

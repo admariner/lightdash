@@ -1,6 +1,13 @@
-import { DbtPackages, Explore, ExploreError } from '@lightdash/common';
+import {
+    DbtPackages,
+    DEFAULT_SPOTLIGHT_CONFIG,
+    Explore,
+    ExploreError,
+    LightdashProjectConfig,
+    type RunQueryTags,
+} from '@lightdash/common';
 import { WarehouseClient } from '@lightdash/warehouses';
-import Logger from '../logger';
+import Logger from '../logging/logger';
 import { ProjectAdapter } from '../types';
 
 type DbtNoneCredentialsProjectAdapterArgs = {
@@ -25,9 +32,11 @@ export class DbtNoneCredentialsProjectAdapter implements ProjectAdapter {
     }
 
     // eslint-disable-next-line class-methods-use-this
-    public async compileAllExplores(
-        loadSources: boolean = false,
-    ): Promise<(Explore | ExploreError)[]> {
+    public async compileAllExplores(_args?: {
+        userUuid: string;
+        organizationUuid: string;
+        projectUuid: string;
+    }): Promise<(Explore | ExploreError)[]> {
         throw new Error('Cannot compile explores with CLI-created projects');
     }
 
@@ -37,9 +46,16 @@ export class DbtNoneCredentialsProjectAdapter implements ProjectAdapter {
         return undefined;
     }
 
-    public async runQuery(sql: string) {
+    public async runQuery(sql: string, queryTags: RunQueryTags) {
         Logger.debug(`Run query against warehouse`);
         // Possible error if query is ran before dependencies are installed
-        return this.warehouseClient.runQuery(sql);
+        return this.warehouseClient.runQuery(sql, queryTags);
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    public async getLightdashProjectConfig(): Promise<LightdashProjectConfig> {
+        return {
+            spotlight: DEFAULT_SPOTLIGHT_CONFIG,
+        };
     }
 }
