@@ -1,3 +1,31 @@
+# [0.1984.0](https://github.com/lightdash/lightdash/compare/0.1983.0...0.1984.0) (2025-09-04)
+
+
+### Features
+
+* support unpivoted data for results table in pivoted charts ([#16682](https://github.com/lightdash/lightdash/issues/16682)) ([99a9f2e](https://github.com/lightdash/lightdash/commit/99a9f2e2c6b6586f72f743c10f560fb410e9b143))
+
+# [0.1983.0](https://github.com/lightdash/lightdash/compare/0.1982.1...0.1983.0) (2025-09-04)
+
+
+### Features
+
+* add visualization warning for incorrect chart configurations ([#16741](https://github.com/lightdash/lightdash/issues/16741)) ([0aada4b](https://github.com/lightdash/lightdash/commit/0aada4b491efbf244c6fe7dd8b97c8be4a0d60ef))
+
+## [0.1982.1](https://github.com/lightdash/lightdash/compare/0.1982.0...0.1982.1) (2025-09-04)
+
+
+### Bug Fixes
+
+* scheduled delivery previews with tabs ([#16724](https://github.com/lightdash/lightdash/issues/16724)) ([ef78558](https://github.com/lightdash/lightdash/commit/ef785585da7de32859187f9999fb5cadebd7e70a))
+
+# [0.1982.0](https://github.com/lightdash/lightdash/compare/0.1981.0...0.1982.0) (2025-09-04)
+
+
+### Features
+
+* show thread preview on click of row ([#16721](https://github.com/lightdash/lightdash/issues/16721)) ([e2822c9](https://github.com/lightdash/lightdash/commit/e2822c9877e8379b7edb29da1cd0bfb671b192a6))
+
 # [0.1981.0](https://github.com/lightdash/lightdash/compare/0.1980.0...0.1981.0) (2025-09-04)
 
 
