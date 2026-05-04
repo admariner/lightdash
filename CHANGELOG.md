@@ -1,3 +1,10 @@
+## [0.2864.2](https://github.com/lightdash/lightdash/compare/0.2864.1...0.2864.2) (2026-05-04)
+
+
+### Bug Fixes
+
+* add `INTERNAL_LIGHTDASH_HOST_IGNORE_HTTPS_ERRORS` env var to skip TLS validation in headless browser ([#22630](https://github.com/lightdash/lightdash/issues/22630)) ([ea13ba4](https://github.com/lightdash/lightdash/commit/ea13ba4c5c421bf954010319abf5c6381b5d5cd9))
+
 ## [0.2864.1](https://github.com/lightdash/lightdash/compare/0.2864.0...0.2864.1) (2026-05-04)
 
 
