@@ -1,3 +1,10 @@
+## [0.2864.1](https://github.com/lightdash/lightdash/compare/0.2864.0...0.2864.1) (2026-05-04)
+
+
+### Bug Fixes
+
+* **pivot:** preserve NULL groups when pivoting (PROD-7075) ([#22569](https://github.com/lightdash/lightdash/issues/22569)) ([c65995f](https://github.com/lightdash/lightdash/commit/c65995f3b9a65263ca4e430d584454e14cd2f9db))
+
 # [0.2864.0](https://github.com/lightdash/lightdash/compare/0.2863.0...0.2864.0) (2026-05-04)
 
 
